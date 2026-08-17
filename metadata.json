@@ -1,0 +1,6 @@
+{
+  "name": "FieldSure - Workforce Management SaaS",
+  "description": "Multi-tenant employee workforce management SaaS platform by Savrdh Technologies featuring Employee PWA, Company Admin Dashboard, and Super-Admin Panel.",
+  "requestFramePermissions": ["camera", "microphone", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
