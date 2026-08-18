@@ -15,7 +15,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   Lock,
-  Layers
+  Layers,
+  FileText
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { FieldSureLogo } from './FieldSureLogo';
@@ -185,6 +186,18 @@ export const Header: React.FC = () => {
             >
               <Database className="w-3.5 h-3.5" />
               <span>{language === 'en' ? 'DB & Schema' : 'डेटाबेस स्कीमा'}</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('mockups_pdf')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                viewMode === 'mockups_pdf'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>{language === 'en' ? '📄 Export All Mockups PDF' : '📄 सभी मॉकअप PDF'}</span>
             </button>
           </nav>
 

@@ -36,7 +36,7 @@ import {
   mockConsentRecord 
 } from '../data/mockData';
 
-export type AppViewMode = 'visualizer' | 'company_admin' | 'employee_pwa' | 'super_admin' | 'architecture';
+export type AppViewMode = 'visualizer' | 'company_admin' | 'employee_pwa' | 'super_admin' | 'architecture' | 'mockups_pdf';
 
 interface AppContextType {
   // Navigation & View

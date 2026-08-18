@@ -6,6 +6,7 @@ import { CompanyDashboard } from './components/company/CompanyDashboard';
 import { EmployeePWA } from './components/employee/EmployeePWA';
 import { SuperAdminDashboard } from './components/superadmin/SuperAdminDashboard';
 import { SchemaAndSecurityViewer } from './components/architecture/SchemaAndSecurityViewer';
+import { SaaSMockupPdfDossier } from './components/mockups/SaaSMockupPdfDossier';
 import { ShieldCheck, Lock, CheckCircle2 } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
@@ -23,6 +24,7 @@ const MainLayout: React.FC = () => {
         {viewMode === 'employee_pwa' && <EmployeePWA />}
         {viewMode === 'super_admin' && <SuperAdminDashboard />}
         {viewMode === 'architecture' && <SchemaAndSecurityViewer />}
+        {viewMode === 'mockups_pdf' && <SaaSMockupPdfDossier />}
       </main>
 
       {/* Enterprise SaaS Footer */}

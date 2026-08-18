@@ -15,7 +15,8 @@ import {
   Activity,
   ArrowUpRight,
   BatteryCharging,
-  Eye
+  Eye,
+  FileText
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -113,6 +114,14 @@ export const ExecutiveKPIVisualizer: React.FC = () => {
             >
               <ShieldCheck className="w-4 h-4" />
               <span>Savrdh Super Admin</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('mockups_pdf')}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 text-xs font-bold shadow-md transition-all hover:scale-[1.02]"
+            >
+              <FileText className="w-4 h-4 text-emerald-400" />
+              <span>📄 Export All Mockups (Single PDF)</span>
             </button>
           </div>
         </div>
