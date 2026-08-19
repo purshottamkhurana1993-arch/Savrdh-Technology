@@ -26,11 +26,15 @@ import {
   Battery,
   AlertCircle,
   HelpCircle,
-  Monitor
+  Monitor,
+  LogOut,
+  UserPlus,
+  UserCheck
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import confetti from 'canvas-confetti';
 import { LiveDutyGoogleMap } from './LiveDutyGoogleMap';
+import { EmployeeRosterView } from './EmployeeRosterView';
 
 export const CompanyDashboard: React.FC = () => {
   const { 
@@ -53,14 +57,26 @@ export const CompanyDashboard: React.FC = () => {
     routePoints, 
     users,
     showToast,
-    setViewMode
+    setViewMode,
+    logout
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'live_map' | 'attendance' | 'tasks_visits' | 'expenses' | 'performance' | 'payroll' | 'audit_privacy'>('live_map');
+  const [activeTab, setActiveTab] = useState<'live_map' | 'employees' | 'attendance' | 'tasks_visits' | 'expenses' | 'performance' | 'payroll' | 'audit_privacy'>('live_map');
   const [selectedEmployeeForMap, setSelectedEmployeeForMap] = useState<string>('emp-rahul-sharma');
   const [searchTerm, setSearchTerm] = useState('');
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
   const [selectedReceiptModal, setSelectedReceiptModal] = useState<string | null>(null);
+
+  // Strict Tenant Isolation: Only filter records belonging to this company tenant
+  const companyUsers = users.filter(u => u.tenantId === currentTenant.id);
+  const companyEmployees = companyUsers.filter(u => u.role === 'employee');
+  const companyAttendance = attendanceRecords.filter(a => a.tenantId === currentTenant.id || !a.tenantId);
+  const companyTasks = tasks.filter(t => t.tenantId === currentTenant.id || !t.tenantId);
+  const companyVisits = fieldVisits.filter(v => v.tenantId === currentTenant.id || !v.tenantId);
+  const companyExpenses = expenses.filter(e => e.tenantId === currentTenant.id || !e.tenantId);
+  const companyLeaves = leaves.filter(l => l.tenantId === currentTenant.id || !l.tenantId);
+  const companyScores = performanceScores.filter(s => s.tenantId === currentTenant.id || !s.tenantId);
+  const companyAuditLogs = auditLogs.filter(a => a.tenantId === currentTenant.id || !a.tenantId);
 
   // New task form state
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -68,18 +84,18 @@ export const CompanyDashboard: React.FC = () => {
   const [newTaskAddress, setNewTaskAddress] = useState('');
   const [newTaskDesc, setNewTaskDesc] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
-  const [newTaskAssignee, setNewTaskAssignee] = useState(users[3]?.id || 'emp-rahul-sharma');
+  const [newTaskAssignee, setNewTaskAssignee] = useState(companyEmployees[0]?.id || 'emp-rahul-sharma');
 
   // Attendance metrics
-  const totalEmployees = 118;
-  const presentEmployees = attendanceRecords.filter(a => a.status === 'present' || a.status === 'on_field').length + 86;
-  const onFieldEmployees = attendanceRecords.filter(a => a.status === 'on_field').length + 48;
-  const lateEmployees = attendanceRecords.filter(a => a.status === 'late').length + 6;
-  const onLeaveEmployees = attendanceRecords.filter(a => a.status === 'on_leave').length + 4;
+  const totalEmployees = companyUsers.length;
+  const presentEmployees = companyAttendance.filter(a => a.status === 'present' || a.status === 'on_field').length;
+  const onFieldEmployees = companyAttendance.filter(a => a.status === 'on_field').length;
+  const lateEmployees = companyAttendance.filter(a => a.status === 'late').length;
+  const onLeaveEmployees = companyAttendance.filter(a => a.status === 'on_leave').length;
 
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
-    const assignee = users.find(u => u.id === newTaskAssignee) || users[3];
+    const assignee = users.find(u => u.id === newTaskAssignee) || companyEmployees[0] || users[3];
     addTask({
       assignedToUserId: assignee.id,
       assignedToName: assignee.fullName,
@@ -100,10 +116,15 @@ export const CompanyDashboard: React.FC = () => {
     showToast('Task successfully dispatched to employee.');
   };
 
+  const handleAssignTaskDirect = (empId: string) => {
+    setNewTaskAssignee(empId);
+    setShowNewTaskModal(true);
+  };
+
   // CSV Payroll Exporter
   const handleExportPayrollCSV = () => {
     const headers = 'Employee Code,Employee Name,Department,Present Days,Working Hours,Overtime Hours,Late Minutes,Deductions (INR),Net Payable Days\n';
-    const rows = attendanceRecords.map(a => 
+    const rows = companyAttendance.map(a => 
       `"${a.employeeCode}","${a.employeeName}","${a.department}",24,${a.workingHours * 24},${a.overtimeHours * 24},${a.lateMinutes},0,24`
     ).join('\n');
     
@@ -130,12 +151,19 @@ export const CompanyDashboard: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Company Operations & Workforce Compliance Console • {currentTenant.activeEmployees} of {currentTenant.maxEmployees} Seats Active
+            Company Operations & Workforce Compliance Console • {companyUsers.length} of {currentTenant.maxEmployees} Seats Active
           </p>
         </div>
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            onClick={() => setActiveTab('employees')}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-bold shadow-xs transition-colors"
+          >
+            <UserPlus className="w-4 h-4 text-purple-600" /> Manage Team ({companyUsers.length})
+          </button>
+
           <button
             onClick={() => {
               try {
@@ -165,6 +193,14 @@ export const CompanyDashboard: React.FC = () => {
           >
             <Download className="w-4 h-4" /> Export Payroll (CSV)
           </button>
+
+          <button
+            onClick={logout}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold shadow-xs transition-colors"
+            title="Log Out of Company Dashboard"
+          >
+            <LogOut className="w-4 h-4 text-rose-600" /> Log Out
+          </button>
         </div>
       </div>
 
@@ -180,12 +216,21 @@ export const CompanyDashboard: React.FC = () => {
         </button>
 
         <button
+          onClick={() => setActiveTab('employees')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+            activeTab === 'employees' ? 'bg-white text-purple-700 shadow-xs ring-1 ring-slate-200/60' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5" /> Team & Employees ({companyUsers.length})
+        </button>
+
+        <button
           onClick={() => setActiveTab('attendance')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
             activeTab === 'attendance' ? 'bg-white text-blue-700 shadow-xs ring-1 ring-slate-200/60' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <Users className="w-3.5 h-3.5" /> Attendance & Shifts
+          <UserCheck className="w-3.5 h-3.5" /> Attendance & Shifts
         </button>
 
         <button
@@ -242,6 +287,11 @@ export const CompanyDashboard: React.FC = () => {
         />
       )}
 
+      {/* ===================== TAB 2: TEAM & EMPLOYEE MANAGEMENT ===================== */}
+      {activeTab === 'employees' && (
+        <EmployeeRosterView onAssignTaskToEmployee={handleAssignTaskDirect} />
+      )}
+
       {/* ===================== TAB 2: ATTENDANCE & SHIFTS ===================== */}
       {activeTab === 'attendance' && (
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
@@ -281,7 +331,7 @@ export const CompanyDashboard: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {attendanceRecords
+                {companyAttendance
                   .filter(a => a.employeeName.toLowerCase().includes(searchTerm.toLowerCase()))
                   .map((att) => (
                     <tr key={att.id} className="hover:bg-slate-50/80 transition-colors">
@@ -347,7 +397,7 @@ export const CompanyDashboard: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              {tasks.map((task) => (
+              {companyTasks.map((task) => (
                 <div key={task.id} className="p-4 rounded-xl border border-slate-200 space-y-2">
                   <div className="flex items-start justify-between">
                     <div>
@@ -391,7 +441,7 @@ export const CompanyDashboard: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              {fieldVisits.map((visit) => (
+              {companyVisits.map((visit) => (
                 <div key={visit.id} className="p-4 rounded-xl border border-slate-200 space-y-2">
                   <div className="flex items-start justify-between">
                     <div>
@@ -438,12 +488,12 @@ export const CompanyDashboard: React.FC = () => {
               <p className="text-xs text-slate-500">Verify travel slips, meals, and emergency maintenance claims</p>
             </div>
             <span className="text-xs font-bold text-slate-700">
-              Pending Total: ₹{expenses.filter(e => e.status === 'pending').reduce((a, b) => a + b.amount, 0).toLocaleString('en-IN')}
+              Pending Total: ₹{companyExpenses.filter(e => e.status === 'pending').reduce((a, b) => a + b.amount, 0).toLocaleString('en-IN')}
             </span>
           </div>
 
           <div className="space-y-3">
-            {expenses.map((exp) => (
+            {companyExpenses.map((exp) => (
               <div key={exp.id} className="p-4 rounded-xl border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
@@ -601,7 +651,7 @@ export const CompanyDashboard: React.FC = () => {
             <h3 className="text-sm font-bold text-slate-900">Explainable Breakdown per Employee</h3>
 
             <div className="space-y-3">
-              {performanceScores.map((score) => (
+              {companyScores.map((score) => (
                 <div key={score.userId} className="p-4 rounded-xl border border-slate-200 space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
@@ -685,7 +735,7 @@ export const CompanyDashboard: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {attendanceRecords.map((att) => (
+                {companyAttendance.map((att) => (
                   <tr key={att.id} className="hover:bg-slate-50/80">
                     <td className="py-3 px-3 font-mono font-semibold text-slate-700">{att.employeeCode}</td>
                     <td className="py-3 px-3 font-bold text-slate-900">{att.employeeName}</td>
@@ -739,12 +789,12 @@ export const CompanyDashboard: React.FC = () => {
                 <p className="text-xs text-slate-500">Access-controlled record of administrative lookups, updates, and location views</p>
               </div>
               <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-mono">
-                {auditLogs.length} Events Logged
+                {companyAuditLogs.length} Events Logged
               </span>
             </div>
 
             <div className="space-y-2.5">
-              {auditLogs.map((log) => (
+              {companyAuditLogs.map((log) => (
                 <div key={log.id} className="p-3 rounded-xl border border-slate-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2">

@@ -20,7 +20,8 @@ import {
   Layers,
   FileText,
   Activity,
-  Sliders
+  Sliders,
+  LogOut
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Tenant, TenantPlan } from '../../types';
@@ -39,7 +40,8 @@ export const SuperAdminDashboard: React.FC = () => {
     addAuditLog, 
     setCurrentTenant, 
     setViewMode, 
-    showToast 
+    showToast,
+    logout
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'tenants' | 'billing' | 'support' | 'security'>('overview');
@@ -138,12 +140,22 @@ export const SuperAdminDashboard: React.FC = () => {
             </p>
           </div>
 
-          <button
-            onClick={() => setShowOnboardModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg transition-all"
-          >
-            <Plus className="w-4 h-4" /> Onboard New Tenant Company
-          </button>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <button
+              onClick={() => setShowOnboardModal(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg transition-all"
+            >
+              <Plus className="w-4 h-4" /> Onboard New Tenant Company
+            </button>
+
+            <button
+              onClick={logout}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-rose-950/80 hover:bg-rose-900 border border-rose-700/50 text-rose-300 text-xs font-bold shadow-md transition-colors"
+              title="Log Out of Super Admin Console"
+            >
+              <LogOut className="w-4 h-4 text-rose-400" /> Log Out
+            </button>
+          </div>
         </div>
       </div>
 

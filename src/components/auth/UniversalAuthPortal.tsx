@@ -17,10 +17,15 @@ import {
   ShieldAlert, 
   Zap, 
   Eye, 
+  EyeOff,
   Layers,
   ChevronRight,
   Globe,
-  Award
+  Award,
+  LogOut,
+  LogIn,
+  Check,
+  UserCircle2
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { TenantPlan } from '../../types';
@@ -31,15 +36,20 @@ export const UniversalAuthPortal: React.FC = () => {
     tenants, 
     addTenant, 
     users, 
+    currentTenant,
     setCurrentTenant, 
+    currentUser,
     setCurrentUser, 
     setViewMode, 
     showToast,
-    language 
+    language,
+    isLoggedIn,
+    login,
+    logout
   } = useApp();
 
-  // Active Auth Tab
-  const [authRole, setAuthRole] = useState<'company_signup' | 'employee_otp' | 'company_login' | 'superadmin_login'>('company_signup');
+  // Active Auth Tab: default to 3-role login
+  const [authRole, setAuthRole] = useState<'company_login' | 'employee_otp' | 'superadmin_login' | 'company_signup'>('company_login');
 
   // =========================================================================
   // 1. COMPANY SIGNUP STATE (3-Step Onboarding)
@@ -68,14 +78,21 @@ export const UniversalAuthPortal: React.FC = () => {
   const [empCompanyCode, setEmpCompanyCode] = useState('AKBS');
   const [otpSent, setOtpSent] = useState(false);
   const [enteredOtp, setEnteredOtp] = useState('');
-  const [showDpdpConsentModal, setShowDpdpConsentModal] = useState(false);
 
   // =========================================================================
   // 3. HR / MANAGER LOGIN STATE
   // =========================================================================
   const [mgrEmail, setMgrEmail] = useState('vikram.singhania@akbspoultry.com');
   const [mgrPassword, setMgrPassword] = useState('••••••••••••');
+  const [showMgrPassword, setShowMgrPassword] = useState(false);
   const [selectedTenantId, setSelectedTenantId] = useState(tenants[0]?.id || 'tenant-akbs');
+
+  // =========================================================================
+  // 4. SUPER ADMIN LOGIN STATE
+  // =========================================================================
+  const [superAdminEmail, setSuperAdminEmail] = useState('rajesh.verma@savrdh.com');
+  const [superAdminKey, setSuperAdminKey] = useState('SVRDH-ROOT-2026-FIDO2');
+  const [showSuperKey, setShowSuperKey] = useState(false);
 
   // =========================================================================
   // HANDLERS
@@ -137,31 +154,22 @@ export const UniversalAuthPortal: React.FC = () => {
 
     // Pick Rahul Sharma or matching employee
     const targetEmp = users.find(u => u.role === 'employee') || users[3];
-    setCurrentUser(targetEmp);
+    const targetTenant = tenants.find(t => t.code === empCompanyCode) || tenants[0];
+    login(targetEmp, targetTenant, 'employee_pwa');
     try { confetti({ particleCount: 50 }); } catch (e) {}
-    showToast(`✅ Welcome, ${targetEmp.fullName}! Redirecting to Field PWA...`);
-    
-    setTimeout(() => {
-      setViewMode('employee_pwa');
-    }, 800);
   };
 
   const handleManagerLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const targetAdmin = users.find(u => u.email === mgrEmail) || users[1];
-    const targetTenant = tenants.find(t => t.id === targetAdmin.tenantId) || tenants[0];
-    
-    setCurrentUser(targetAdmin);
-    setCurrentTenant(targetTenant);
-    showToast(`🔑 Logged in as ${targetAdmin.fullName} (${targetAdmin.designation})`);
-    setViewMode('company_admin');
+    const targetTenant = tenants.find(t => t.id === selectedTenantId) || tenants[0];
+    login(targetAdmin, targetTenant, 'company_admin');
   };
 
-  const handleSuperAdminDirectLogin = () => {
+  const handleSuperAdminDirectLogin = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     const superAdmin = users.find(u => u.role === 'super_admin') || users[0];
-    setCurrentUser(superAdmin);
-    showToast(`🛡️ Master Platform Access granted: ${superAdmin.fullName}`);
-    setViewMode('super_admin');
+    login(superAdmin, undefined, 'super_admin');
   };
 
   return (
@@ -175,53 +183,99 @@ export const UniversalAuthPortal: React.FC = () => {
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold border border-emerald-500/30">
               <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Universal Authentication & Onboarding Hub</span>
+              <span>Universal Authentication & Role Login Portal</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-              One Unified Entryway for Every Enterprise Role
+              One Unified Entryway for All 3 System Roles
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-2xl">
-              Experience the role-tailored authentication flows of FieldSure SaaS by Savrdh Technologies: Enterprise Onboarding, Employee OTP Auth, HR Corporate SSO, and Master Governance.
+              Access the dedicated authentication panels for <strong>Company Admin/Owner</strong>, <strong>Field Employee PWA</strong>, and <strong>Savrdh Super-Admin Governance</strong>, or register a new company tenant.
             </p>
           </div>
 
           <div className="flex items-center gap-2 bg-slate-800/80 p-1.5 rounded-2xl border border-slate-700/80">
             <button
-              onClick={() => setViewMode('super_admin')}
+              onClick={() => {
+                if (currentUser.role === 'super_admin') setViewMode('super_admin');
+                else if (currentUser.role === 'employee') setViewMode('employee_pwa');
+                else setViewMode('company_admin');
+              }}
               className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-700 hover:bg-slate-600 text-white transition-all"
             >
-              ← Back to Console
+              ← Back to Active Dashboard
             </button>
           </div>
         </div>
       </div>
 
-      {/* Role Navigation Selector Grid */}
+      {/* Active Session & Logout Notice Bar */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-slate-900 text-emerald-400 flex items-center justify-center font-bold">
+            <UserCircle2 className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-900">Current Active Session:</span>
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
+                ● Logged In
+              </span>
+            </div>
+            <div className="text-xs text-slate-600 mt-0.5">
+              <strong className="text-slate-900">{currentUser.fullName}</strong> ({currentUser.email}) • Role: <span className="font-semibold text-indigo-700 capitalize">{currentUser.role.replace('_', ' ')}</span> • Tenant: <span className="font-semibold text-slate-800">{currentTenant.name}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <button
+            onClick={() => {
+              if (currentUser.role === 'super_admin') setViewMode('super_admin');
+              else if (currentUser.role === 'employee') setViewMode('employee_pwa');
+              else setViewMode('company_admin');
+            }}
+            className="flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white transition-colors"
+          >
+            Continue as {currentUser.fullName.split(' ')[0]} →
+          </button>
+          
+          <button
+            onClick={logout}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors shadow-xs"
+            title="Log Out and clear active session"
+          >
+            <LogOut className="w-4 h-4 text-rose-600" />
+            <span>Log Out</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 3-Role Navigation Selector Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         
-        {/* Tab 1: Company Sign-up */}
+        {/* Tab 1: Company Owner / HR Admin Login */}
         <button
-          onClick={() => setAuthRole('company_signup')}
+          onClick={() => setAuthRole('company_login')}
           className={`p-4 rounded-2xl border text-left transition-all relative overflow-hidden ${
-            authRole === 'company_signup'
+            authRole === 'company_login'
               ? 'bg-white border-blue-600 shadow-md ring-2 ring-blue-500/20'
               : 'bg-white/80 hover:bg-white border-slate-200 text-slate-600 hover:border-slate-300'
           }`}
         >
           <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${
-            authRole === 'company_signup' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
+            authRole === 'company_login' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
           }`}>
             <Building2 className="w-5 h-5" />
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-blue-600">Enterprise</span>
-            {authRole === 'company_signup' && <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />}
+            <span className="text-xs font-bold uppercase tracking-wider text-blue-600">Role 1</span>
+            {authRole === 'company_login' && <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />}
           </div>
-          <h3 className="text-sm font-bold text-slate-900 mt-1">Company Sign-Up</h3>
-          <p className="text-[11px] text-slate-500 mt-0.5">3-Step GST Onboarding & 14-Day Pilot</p>
+          <h3 className="text-sm font-bold text-slate-900 mt-1">1. Company Admin / Owner</h3>
+          <p className="text-[11px] text-slate-500 mt-0.5">Corporate HR & Owner Portal</p>
         </button>
 
-        {/* Tab 2: Employee OTP Auth */}
+        {/* Tab 2: Field Employee OTP Auth */}
         <button
           onClick={() => setAuthRole('employee_otp')}
           className={`p-4 rounded-2xl border text-left transition-all relative overflow-hidden ${
@@ -236,36 +290,14 @@ export const UniversalAuthPortal: React.FC = () => {
             <Smartphone className="w-5 h-5" />
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-emerald-600">Field PWA</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-600">Role 2</span>
             {authRole === 'employee_otp' && <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />}
           </div>
-          <h3 className="text-sm font-bold text-slate-900 mt-1">Employee Mobile OTP</h3>
-          <p className="text-[11px] text-slate-500 mt-0.5">Passwordless 1-Tap Punch-in Auth</p>
+          <h3 className="text-sm font-bold text-slate-900 mt-1">2. Field Officer Mobile PWA</h3>
+          <p className="text-[11px] text-slate-500 mt-0.5">Passwordless Phone / OTP Punch</p>
         </button>
 
-        {/* Tab 3: HR & Manager Login */}
-        <button
-          onClick={() => setAuthRole('company_login')}
-          className={`p-4 rounded-2xl border text-left transition-all relative overflow-hidden ${
-            authRole === 'company_login'
-              ? 'bg-white border-indigo-600 shadow-md ring-2 ring-indigo-500/20'
-              : 'bg-white/80 hover:bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-          }`}
-        >
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${
-            authRole === 'company_login' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'
-          }`}>
-            <UserCheck className="w-5 h-5" />
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">Corporate</span>
-            {authRole === 'company_login' && <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />}
-          </div>
-          <h3 className="text-sm font-bold text-slate-900 mt-1">HR & Manager Login</h3>
-          <p className="text-[11px] text-slate-500 mt-0.5">Corporate Email & Role SSO</p>
-        </button>
-
-        {/* Tab 4: Savrdh Super-Admin */}
+        {/* Tab 3: Savrdh Super-Admin */}
         <button
           onClick={() => setAuthRole('superadmin_login')}
           className={`p-4 rounded-2xl border text-left transition-all relative overflow-hidden ${
@@ -280,11 +312,33 @@ export const UniversalAuthPortal: React.FC = () => {
             <ShieldCheck className="w-5 h-5" />
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-purple-600">Platform</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-purple-600">Role 3</span>
             {authRole === 'superadmin_login' && <span className="w-2 h-2 rounded-full bg-purple-600 animate-pulse" />}
           </div>
-          <h3 className="text-sm font-bold text-slate-900 mt-1">Savrdh Super-Admin</h3>
-          <p className="text-[11px] text-slate-500 mt-0.5">Master Governance & Root Auth</p>
+          <h3 className="text-sm font-bold text-slate-900 mt-1">3. Savrdh Super-Admin</h3>
+          <p className="text-[11px] text-slate-500 mt-0.5">Master Platform Governance</p>
+        </button>
+
+        {/* Tab 4: Register New Company */}
+        <button
+          onClick={() => setAuthRole('company_signup')}
+          className={`p-4 rounded-2xl border text-left transition-all relative overflow-hidden ${
+            authRole === 'company_signup'
+              ? 'bg-white border-indigo-600 shadow-md ring-2 ring-indigo-500/20'
+              : 'bg-white/80 hover:bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+          }`}
+        >
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${
+            authRole === 'company_signup' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'
+          }`}>
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">New Tenant</span>
+            {authRole === 'company_signup' && <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />}
+          </div>
+          <h3 className="text-sm font-bold text-slate-900 mt-1">4. Register Company</h3>
+          <p className="text-[11px] text-slate-500 mt-0.5">3-Step GST Onboarding Pilot</p>
         </button>
 
       </div>
@@ -888,40 +942,89 @@ export const UniversalAuthPortal: React.FC = () => {
               <ShieldCheck className="w-7 h-7" />
             </div>
             <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[11px] font-mono font-bold mb-2">
-              SAVRDH TECHNOLOGIES • ROOT CONSOLE
+              SAVRDH TECHNOLOGIES • ROOT PLATFORM CONSOLE
             </div>
-            <h2 className="text-2xl font-bold text-white">SaaS Platform Super-Admin</h2>
+            <h2 className="text-2xl font-bold text-white">Super-Admin Master Access</h2>
             <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-              Restricted master access for cross-tenant billing, GST audits, cluster monitors, and technical impersonation.
+              Role 3: Restricted master panel for cross-tenant governance, Indian GST billing audits, server monitors, and technical impersonation.
             </p>
           </div>
 
-          <div className="space-y-4">
-            <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400">Authenticated Platform Operator:</span>
-                <span className="font-mono text-purple-300 font-bold">rajesh.verma@savrdh.com</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400">Security Tier:</span>
-                <span className="text-emerald-400 font-bold flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5" /> FIDO2 Hardware 2FA Active
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400">Cluster Status:</span>
-                <span className="text-emerald-400 font-bold">● All 3 Nodes Healthy (Asia-South1)</span>
+          <form onSubmit={handleSuperAdminDirectLogin} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-1">Super-Admin Email *</label>
+              <div className="relative">
+                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <input
+                  type="email"
+                  required
+                  value={superAdminEmail}
+                  onChange={e => setSuperAdminEmail(e.target.value)}
+                  placeholder="rajesh.verma@savrdh.com"
+                  className="w-full pl-9 pr-3 py-2.5 bg-slate-900 border border-purple-900/60 rounded-xl text-sm font-medium text-white placeholder:text-slate-500 focus:bg-slate-850 focus:ring-2 focus:ring-purple-500 focus:outline-hidden"
+                />
               </div>
             </div>
 
-            <button
-              onClick={handleSuperAdminDirectLogin}
-              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-sm shadow-xl transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>Enter Savrdh Super-Admin Governance Console</span>
-            </button>
-          </div>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold text-slate-300">FIDO2 Hardware Key / Master Token *</label>
+                <span className="text-[10px] text-purple-400 font-mono">256-Bit Hardware HSM</span>
+              </div>
+              <div className="relative">
+                <Key className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <input
+                  type={showSuperKey ? "text" : "password"}
+                  required
+                  value={superAdminKey}
+                  onChange={e => setSuperAdminKey(e.target.value)}
+                  placeholder="SVRDH-ROOT-••••••••"
+                  className="w-full pl-9 pr-10 py-2.5 bg-slate-900 border border-purple-900/60 rounded-xl text-sm font-mono text-purple-200 placeholder:text-slate-500 focus:bg-slate-850 focus:ring-2 focus:ring-purple-500 focus:outline-hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSuperKey(!showSuperKey)}
+                  className="absolute right-3 top-3 text-slate-400 hover:text-slate-200"
+                >
+                  {showSuperKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-purple-900/40 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Security Tier:</span>
+                <span className="text-emerald-400 font-bold flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5" /> FIDO2 Hardware Token Active
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Cluster Status:</span>
+                <span className="text-emerald-400 font-bold">● All 3 Ingress Nodes Healthy (Asia-South1)</span>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <button
+                type="submit"
+                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-sm shadow-xl transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>Log In as Savrdh Super-Admin</span>
+              </button>
+
+              {currentUser.role === 'super_admin' && (
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="w-full py-2.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/40 text-rose-300 font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Log Out Active Super-Admin Session</span>
+                </button>
+              )}
+            </div>
+          </form>
 
           <div className="mt-6 pt-4 border-t border-slate-800 text-center text-[11px] text-slate-500">
             FieldSure™ Multi-Tenant SaaS Engine • Security controls aligned to ISO 27001 & DPDP Act 2023 principles

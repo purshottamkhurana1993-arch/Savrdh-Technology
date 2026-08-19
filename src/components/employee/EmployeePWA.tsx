@@ -28,7 +28,8 @@ import {
   RefreshCw,
   Eye,
   Lock,
-  ChevronRight
+  ChevronRight,
+  LogOut
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { FieldSureLogo } from '../common/FieldSureLogo';
@@ -61,7 +62,9 @@ export const EmployeePWA: React.FC = () => {
     isOffline,
     isMobileDeviceFrame,
     setIsMobileDeviceFrame,
-    language 
+    language,
+    logout,
+    showToast
   } = useApp();
 
   // Active PWA Tab
@@ -173,6 +176,13 @@ export const EmployeePWA: React.FC = () => {
     setNewChatText('');
   };
 
+  // Strict Employee-Level Data Isolation: Employee can ONLY see their own visits, tasks, expenses, attendance & leaves
+  const myFieldVisits = fieldVisits.filter(v => v.employeeId === currentUser.id || !v.employeeId);
+  const myTasks = tasks.filter(t => t.assignedToUserId === currentUser.id || !t.assignedToUserId);
+  const myExpenses = expenses.filter(e => e.userId === currentUser.id);
+  const myAttendance = attendanceRecords.filter(a => a.employeeId === currentUser.id || a.employeeCode === currentUser.employeeCode);
+  const myLeaves = leaves.filter(l => l.userId === currentUser.id);
+
   // Content for the mobile application
   const appContent = (
     <div className="flex flex-col h-full bg-slate-900 text-slate-100 font-sans">
@@ -191,11 +201,11 @@ export const EmployeePWA: React.FC = () => {
           </div>
         </div>
 
-        {/* Battery & Online indicator */}
+        {/* Battery, Online indicator & Logout */}
         <div className="flex items-center gap-2">
           {isOffline ? (
             <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
-              <WifiOff className="w-3 h-3" /> Offline Mode
+              <WifiOff className="w-3 h-3" /> Offline
             </span>
           ) : (
             <span className="flex items-center gap-1 text-[11px] text-emerald-400">
@@ -205,6 +215,14 @@ export const EmployeePWA: React.FC = () => {
           <span className="text-[11px] text-slate-400 flex items-center gap-0.5" title="Battery status displayed only where supported and permitted by the device">
             <Battery className="w-3.5 h-3.5 text-emerald-400" /> 74%
           </span>
+          <button
+            onClick={logout}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-700/50 text-rose-300 text-[10px] font-bold transition-colors ml-1"
+            title="Log Out of Employee Account"
+          >
+            <LogOut className="w-3 h-3" />
+            <span>Exit</span>
+          </button>
         </div>
       </div>
 
@@ -428,12 +446,12 @@ export const EmployeePWA: React.FC = () => {
                 <p className="text-xs text-slate-400">GPS geofence timestamp verification</p>
               </div>
               <span className="text-xs px-2.5 py-1 rounded-full bg-blue-900/60 text-blue-300 font-semibold">
-                {fieldVisits.filter(v => v.status === 'completed').length}/{fieldVisits.length} Done
+                {myFieldVisits.filter(v => v.status === 'completed').length}/{myFieldVisits.length} Done
               </span>
             </div>
 
             <div className="space-y-3">
-              {fieldVisits.map((visit) => (
+              {myFieldVisits.map((visit) => (
                 <div key={visit.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -504,7 +522,7 @@ export const EmployeePWA: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              {tasks.map((task) => (
+              {myTasks.map((task) => (
                 <div key={task.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2.5">
                   <div className="flex items-start justify-between">
                     <h3 className="text-xs font-bold text-white">{task.title}</h3>
@@ -573,7 +591,7 @@ export const EmployeePWA: React.FC = () => {
             </div>
 
             <div className="space-y-2.5">
-              {expenses.map((exp) => (
+              {myExpenses.map((exp) => (
                 <div key={exp.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex items-center justify-between">
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2">
@@ -668,7 +686,7 @@ export const EmployeePWA: React.FC = () => {
             </div>
 
             <div className="space-y-2.5">
-              {attendanceRecords.map((att) => (
+              {myAttendance.map((att) => (
                 <div key={att.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex items-center justify-between">
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2">
@@ -698,7 +716,7 @@ export const EmployeePWA: React.FC = () => {
             {/* Leave requests section */}
             <div className="pt-3 border-t border-slate-800 space-y-2">
               <h3 className="text-xs font-bold text-white uppercase tracking-wider">Leave Applications</h3>
-              {leaves.map((l) => (
+              {myLeaves.map((l) => (
                 <div key={l.id} className="bg-slate-900/60 border border-slate-800 p-3 rounded-xl flex items-center justify-between text-xs">
                   <div>
                     <span className="font-bold text-white">{l.leaveType} Leave ({l.totalDays} Day)</span>

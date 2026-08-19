@@ -57,6 +57,12 @@ interface AppContextType {
   users: User[];
   currentUser: User;
   setCurrentUser: (u: User) => void;
+  isLoggedIn: boolean;
+  login: (user: User, tenant?: Tenant, targetView?: AppViewMode) => void;
+  logout: () => void;
+  addEmployee: (empData: Omit<User, 'id' | 'createdAt'>) => boolean;
+  removeEmployee: (userId: string) => void;
+  updateEmployeeStatus: (userId: string, status: 'active' | 'inactive' | 'suspended') => void;
 
   // Employee State & Active Duty
   currentDutySession: DutySession | null;
@@ -137,6 +143,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentTenant, setCurrentTenant] = useState<Tenant>(mockTenants[0]);
   const [users, setUsers] = useState<User[]>(mockUsers);
   const [currentUser, setCurrentUser] = useState<User>(mockUsers[0]); // Savrdh Technologies Super-Admin by default
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(true);
+
+  const login = (user: User, tenant?: Tenant, targetView?: AppViewMode) => {
+    setIsLoggedIn(true);
+    setCurrentUser(user);
+    if (tenant) {
+      setCurrentTenant(tenant);
+    } else {
+      const userTenant = tenants.find(t => t.id === user.tenantId);
+      if (userTenant) setCurrentTenant(userTenant);
+    }
+
+    if (targetView) {
+      setViewMode(targetView);
+    } else {
+      if (user.role === 'super_admin') setViewMode('super_admin');
+      else if (user.role === 'employee') setViewMode('employee_pwa');
+      else setViewMode('company_admin');
+    }
+
+    showToast(`✅ Welcome, ${user.fullName}! Logged in as ${user.role.replace('_', ' ')}.`);
+  };
+
+  const logout = () => {
+    setIsLoggedIn(false);
+    // Stop active duty session tracking on logout
+    if (currentDutySession && currentDutySession.status === 'active') {
+      setCurrentDutySession(null);
+    }
+    showToast('👋 You have been logged out successfully. Choose a role to log in.');
+    setViewMode('auth_portal');
+  };
 
   // Operational State
   const [currentDutySession, setCurrentDutySession] = useState<DutySession | null>(mockDutySessions[0]);
@@ -496,6 +534,75 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast(`Tenant status updated to: ${status}`);
   };
 
+  // Company Employee Management (Add / Remove / Status)
+  const addEmployee = (empData: Omit<User, 'id' | 'createdAt'>): boolean => {
+    const tenantUsers = users.filter(u => u.tenantId === currentTenant.id && u.status === 'active');
+    if (tenantUsers.length >= currentTenant.maxEmployees) {
+      showToast(`⚠️ License Seat Limit Reached (${currentTenant.maxEmployees} seats). Please upgrade your plan in SaaS Console.`);
+      return false;
+    }
+
+    const newEmpId = `emp-${Date.now()}`;
+    const newEmployee: User = {
+      ...empData,
+      id: newEmpId,
+      createdAt: new Date().toISOString().slice(0, 10)
+    };
+
+    setUsers(prev => [...prev, newEmployee]);
+
+    // Update active employee count on tenant
+    setTenants(prev => prev.map(t => t.id === currentTenant.id ? {
+      ...t,
+      activeEmployees: t.activeEmployees + 1
+    } : t));
+
+    setCurrentTenant(prev => ({
+      ...prev,
+      activeEmployees: prev.activeEmployees + 1
+    }));
+
+    addAuditLog('ADD_EMPLOYEE', 'User', newEmpId, `Added employee ${newEmployee.fullName} (${newEmployee.employeeCode || newEmployee.designation})`);
+    showToast(`✅ Employee ${newEmployee.fullName} added successfully to ${currentTenant.name}!`);
+    return true;
+  };
+
+  const removeEmployee = (userId: string) => {
+    const empToRemove = users.find(u => u.id === userId);
+    if (!empToRemove) return;
+
+    if (empToRemove.role === 'company_owner' || empToRemove.role === 'super_admin') {
+      showToast('⚠️ Primary Administrator cannot be deleted.');
+      return;
+    }
+
+    // Remove user
+    setUsers(prev => prev.filter(u => u.id !== userId));
+
+    // Update active employee count on tenant
+    setTenants(prev => prev.map(t => t.id === currentTenant.id ? {
+      ...t,
+      activeEmployees: Math.max(1, t.activeEmployees - 1)
+    } : t));
+
+    setCurrentTenant(prev => ({
+      ...prev,
+      activeEmployees: Math.max(1, prev.activeEmployees - 1)
+    }));
+
+    addAuditLog('REMOVE_EMPLOYEE', 'User', userId, `Removed employee ${empToRemove.fullName} (${empToRemove.email})`);
+    showToast(`🗑️ Employee ${empToRemove.fullName} removed from ${currentTenant.name}.`);
+  };
+
+  const updateEmployeeStatus = (userId: string, status: 'active' | 'inactive' | 'suspended') => {
+    const emp = users.find(u => u.id === userId);
+    if (!emp) return;
+
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, status } : u));
+    addAuditLog('UPDATE_EMPLOYEE_STATUS', 'User', userId, `Employee status changed to ${status}`);
+    showToast(`Status of ${emp.fullName} updated to ${status}.`);
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -514,6 +621,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         users,
         currentUser,
         setCurrentUser,
+        isLoggedIn,
+        login,
+        logout,
+        addEmployee,
+        removeEmployee,
+        updateEmployeeStatus,
         currentDutySession,
         punchIn,
         punchOut,
