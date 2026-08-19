@@ -91,11 +91,11 @@ service cloud.firestore {
       allow update: if isCompanyAdmin(resource.data.tenantId);
     }
 
-    // --- Immutable Audit Logs (Append-only) ---
+    // --- Append-only Audit Logs (Access-controlled) ---
     match /auditLogs/{logId} {
       allow read: if isCompanyAdmin(resource.data.tenantId) || isSuperAdmin();
       allow create: if isAuthenticated();
-      allow update, delete: if false; // Strict immutability
+      allow update, delete: if false; // Strict server-side append-only enforcement
     }
   }
 }`;
@@ -262,7 +262,7 @@ export const razorpaySubscriptionWebhook = functions.https.onRequest(async (req,
             },
             {
               name: 'auditLogs',
-              desc: 'Immutable append-only trail of administrative lookups, updates, and location views.',
+              desc: 'Append-only, access-controlled audit trail of administrative lookups, updates, and location views.',
               fields: ['id', 'tenantId', 'actorId', 'action', 'targetEntity', 'timestamp', 'reason', 'ipAddress']
             },
             {
@@ -341,7 +341,7 @@ export const razorpaySubscriptionWebhook = functions.https.onRequest(async (req,
       {activeTab === 'privacy_dpdp' && (
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6">
           <div className="space-y-2">
-            <h2 className="text-base font-bold text-slate-900">DPDP Act 2023 & ISO 27001 Compliance Architecture</h2>
+            <h2 className="text-base font-bold text-slate-900">DPDP Act 2023 & ISO 27001 Security Architecture Principles</h2>
             <p className="text-xs text-slate-600 leading-relaxed">
               FieldSure is architected ground-up as a transparent, consent-first workforce management system. It rejects covert tracking in favor of explicit duty sessions.
             </p>

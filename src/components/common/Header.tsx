@@ -12,11 +12,14 @@ import {
   UserCircle2, 
   ChevronDown, 
   Bell, 
-  CheckCircle2,
-  AlertTriangle,
-  Lock,
-  Layers,
-  FileText
+  CheckCircle2, 
+  AlertTriangle, 
+  Lock, 
+  Layers, 
+  FileText, 
+  Sparkles, 
+  KeyRound,
+  BookOpen
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { FieldSureLogo } from './FieldSureLogo';
@@ -189,6 +192,42 @@ export const Header: React.FC = () => {
             </button>
 
             <button
+              onClick={() => setViewMode('product_manual')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                viewMode === 'product_manual'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 border border-emerald-200/80 bg-emerald-50/50'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>{language === 'en' ? '📖 Product Manual & Model' : '📖 यूजर मैन्युअल व मॉडल'}</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('map_command_center')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                viewMode === 'map_command_center'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50 border border-indigo-200/80 bg-indigo-50/50'
+              }`}
+            >
+              <MapPin className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
+              <span>{language === 'en' ? '🖥️ Multi-Screen Map Wall' : '🖥️ मल्टी-स्क्रीन मैप'}</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('auth_portal')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                viewMode === 'auth_portal'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-blue-700 hover:text-blue-900 hover:bg-blue-50'
+              }`}
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>{language === 'en' ? '🔐 Sign Up / Login' : '🔐 साइन-अप / लॉगिन'}</span>
+            </button>
+
+            <button
               onClick={() => setViewMode('mockups_pdf')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
                 viewMode === 'mockups_pdf'
@@ -198,6 +237,18 @@ export const Header: React.FC = () => {
             >
               <FileText className="w-3.5 h-3.5" />
               <span>{language === 'en' ? '📄 Export All Mockups PDF' : '📄 सभी मॉकअप PDF'}</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('coming_soon_poster')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                viewMode === 'coming_soon_poster'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'text-amber-700 hover:text-amber-900 hover:bg-amber-50'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>{language === 'en' ? '🚀 Coming Soon Poster' : '🚀 कमिंग सून पोस्टर'}</span>
             </button>
           </nav>
 
@@ -314,10 +365,10 @@ export const Header: React.FC = () => {
 
           <div className="flex items-center gap-3">
             <span className="text-[10px] text-slate-500 hidden md:inline">
-              ISO 27001 & DPDP 2023 Compliant • Tenant: <strong className="text-slate-700">{currentTenant.name}</strong>
+              Privacy controls aligned to DPDP Act 2023 & Rules 2025 • Tenant: <strong className="text-slate-700">{currentTenant.name}</strong>
             </span>
-            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 font-medium bg-emerald-100/80 px-2 py-0.5 rounded">
-              <Lock className="w-2.5 h-2.5" /> Immutable Audit On
+            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-800 font-medium bg-emerald-100/80 px-2 py-0.5 rounded">
+              <Lock className="w-2.5 h-2.5" /> Append-only Audit Trail
             </span>
           </div>
         </div>

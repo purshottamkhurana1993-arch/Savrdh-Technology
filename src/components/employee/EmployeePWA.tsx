@@ -185,7 +185,7 @@ export const EmployeePWA: React.FC = () => {
           </div>
           <div>
             <h1 className="text-sm font-bold text-white tracking-tight flex items-center gap-1.5">
-              FieldSure <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-normal">PWA</span>
+              FieldSure <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-normal">Browser PWA</span>
             </h1>
             <p className="text-[11px] text-slate-400 truncate max-w-[170px]">{currentTenant.name}</p>
           </div>
@@ -202,10 +202,15 @@ export const EmployeePWA: React.FC = () => {
               <Wifi className="w-3 h-3" />
             </span>
           )}
-          <span className="text-[11px] text-slate-400 flex items-center gap-0.5">
+          <span className="text-[11px] text-slate-400 flex items-center gap-0.5" title="Battery status displayed only where supported and permitted by the device">
             <Battery className="w-3.5 h-3.5 text-emerald-400" /> 74%
           </span>
         </div>
+      </div>
+
+      {/* Mandatory PWA Limitation Notice */}
+      <div className="px-3 py-1 bg-amber-500/10 border-b border-amber-500/20 text-[10px] text-amber-300 font-medium text-center">
+        Limited browser version — continuous background location is not guaranteed.
       </div>
 
       {/* Mandatory Transparent Privacy Indicator: Duty Location Banner */}
@@ -767,7 +772,7 @@ export const EmployeePWA: React.FC = () => {
 
             <div className="p-3.5 bg-slate-900/60 border border-slate-800 rounded-2xl text-[11px] text-slate-400 space-y-1.5">
               <div className="flex items-center gap-1.5 text-slate-200 font-semibold">
-                <Lock className="w-3.5 h-3.5 text-emerald-400" /> Immutable Employee Rights
+                <Lock className="w-3.5 h-3.5 text-emerald-400" /> Employee Privacy Rights (DPDP Aligned)
               </div>
               <p>• Your personal WhatsApp, SMS, photos or personal calls are never accessed.</p>
               <p>• You may request a complete export or purge of your past GPS logs via the Grievance tab.</p>

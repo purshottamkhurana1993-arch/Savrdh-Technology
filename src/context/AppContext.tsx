@@ -36,7 +36,7 @@ import {
   mockConsentRecord 
 } from '../data/mockData';
 
-export type AppViewMode = 'visualizer' | 'company_admin' | 'employee_pwa' | 'super_admin' | 'architecture' | 'mockups_pdf';
+export type AppViewMode = 'visualizer' | 'company_admin' | 'employee_pwa' | 'super_admin' | 'architecture' | 'mockups_pdf' | 'coming_soon_poster' | 'auth_portal' | 'map_command_center' | 'product_manual';
 
 interface AppContextType {
   // Navigation & View
@@ -113,7 +113,19 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [viewMode, setViewMode] = useState<AppViewMode>('visualizer');
+  const [viewMode, setViewMode] = useState<AppViewMode>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const queryView = params.get('view');
+      if (queryView === 'map_command_center' || queryView === 'live_map' || queryView === 'map_popout') {
+        return 'map_command_center';
+      }
+      if (queryView && ['visualizer', 'company_admin', 'employee_pwa', 'super_admin', 'architecture', 'mockups_pdf', 'coming_soon_poster', 'auth_portal'].includes(queryView)) {
+        return queryView as AppViewMode;
+      }
+    }
+    return 'super_admin';
+  });
   const [language, setLanguage] = useState<'en' | 'hi'>('en');
   const [isMobileDeviceFrame, setIsMobileDeviceFrame] = useState<boolean>(false);
   const [isOffline, setIsOffline] = useState<boolean>(false);
@@ -124,7 +136,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [tenants, setTenants] = useState<Tenant[]>(mockTenants);
   const [currentTenant, setCurrentTenant] = useState<Tenant>(mockTenants[0]);
   const [users, setUsers] = useState<User[]>(mockUsers);
-  const [currentUser, setCurrentUser] = useState<User>(mockUsers[3]); // Rahul Sharma by default
+  const [currentUser, setCurrentUser] = useState<User>(mockUsers[0]); // Savrdh Technologies Super-Admin by default
 
   // Operational State
   const [currentDutySession, setCurrentDutySession] = useState<DutySession | null>(mockDutySessions[0]);

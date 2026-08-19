@@ -30,6 +30,7 @@ import { useApp } from '../../context/AppContext';
 import { FieldSureLogo } from '../common/FieldSureLogo';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { generateAndDownloadFieldSurePdf } from '../../utils/generateVectorPdf';
 
 export const SaaSMockupPdfDossier: React.FC = () => {
   const { setViewMode, currentTenant, showToast } = useApp();
@@ -37,6 +38,17 @@ export const SaaSMockupPdfDossier: React.FC = () => {
   const [pdfProgress, setPdfProgress] = useState(0);
   const [activeSection, setActiveSection] = useState<'all' | 'cover' | 'kpi' | 'admin' | 'pwa' | 'superadmin' | 'architecture'>('all');
   const printAreaRef = useRef<HTMLDivElement>(null);
+
+  const handleInstantVectorDownload = () => {
+    try {
+      showToast('📥 Generating and downloading 6-Page High-Res Vector PDF...');
+      generateAndDownloadFieldSurePdf();
+      showToast('✅ FieldSure PDF saved directly to your device!');
+    } catch (err) {
+      console.error(err);
+      handleDownloadJsPDF();
+    }
+  };
 
   // Download directly as multi-page PDF using jsPDF + html2canvas
   const handleDownloadJsPDF = async () => {
@@ -129,6 +141,14 @@ export const SaaSMockupPdfDossier: React.FC = () => {
         {/* Action Buttons */}
         <div className="flex items-center gap-2.5 flex-wrap">
           <button
+            onClick={handleInstantVectorDownload}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md transition-all hover:scale-105 active:scale-95"
+          >
+            <Download className="w-4 h-4 stroke-[2.5]" />
+            <span>⚡ Instant Vector PDF Download</span>
+          </button>
+
+          <button
             onClick={handleBrowserPrint}
             className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold border border-slate-300 shadow-xs transition-colors"
           >
@@ -139,10 +159,10 @@ export const SaaSMockupPdfDossier: React.FC = () => {
           <button
             onClick={handleDownloadJsPDF}
             disabled={isGeneratingPdf}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors disabled:opacity-50"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors disabled:opacity-50"
           >
-            <Download className="w-4 h-4" />
-            <span>{isGeneratingPdf ? `Generating (${pdfProgress}%)...` : 'Download Single PDF File'}</span>
+            <Sparkles className="w-4 h-4 text-emerald-400" />
+            <span>{isGeneratingPdf ? `Rendering (${pdfProgress}%)...` : 'Render Canvas PDF'}</span>
           </button>
         </div>
       </div>
@@ -200,7 +220,7 @@ export const SaaSMockupPdfDossier: React.FC = () => {
             {/* Title Hero */}
             <div className="pt-10 space-y-4 max-w-3xl">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
-                <ShieldCheck className="w-4 h-4" /> ISO 27001 & India DPDP Act 2023 Compliant Platform
+                <ShieldCheck className="w-4 h-4" /> Security controls aligned to ISO 27001 & DPDP Act 2023 principles
               </div>
 
               <h2 className="text-4xl font-extrabold text-white tracking-tight leading-tight">
@@ -250,7 +270,7 @@ export const SaaSMockupPdfDossier: React.FC = () => {
           <div className="relative z-10 pt-6 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
             <div>
               <span>Designed & Operated by: </span>
-              <strong className="text-white">Savrdh Technologies Pvt Ltd</strong>
+              <strong className="text-white">Savrdh Technologies</strong>
             </div>
             <div className="flex items-center gap-6 font-mono text-[11px]">
               <span>RELEASE: August 2026</span>
@@ -740,7 +760,7 @@ export const SaaSMockupPdfDossier: React.FC = () => {
                 <span className="font-mono text-[10px] text-slate-400">30-Min Auto-Expiring Session</span>
               </div>
               <p className="text-slate-300 text-[11px]">
-                Every support login into a client company generates an immutable audit record with actor IP, reason for access, and timestamp in compliance with enterprise ISO 27001 data-access protocols.
+                Every support login into a client company generates an append-only audit record with actor IP, reason for access, and timestamp in compliance with data-access protocols.
               </p>
             </div>
           </div>
@@ -785,7 +805,7 @@ export const SaaSMockupPdfDossier: React.FC = () => {
 
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1 font-mono text-[11px]">
                   <span className="text-amber-700 font-bold">/tenants/{'{tenantId}'}/auditLogs</span>
-                  <p className="text-slate-600 font-sans text-[10px]">Immutable write-only audit stream with actor ID, IP & action.</p>
+                  <p className="text-slate-600 font-sans text-[10px]">Append-only audit stream with actor ID, IP & action.</p>
                 </div>
               </div>
             </div>
@@ -825,7 +845,7 @@ service cloud.firestore {
 
           {/* End of Dossier Sign-Off */}
           <div className="text-center pt-4 border-t border-slate-200 text-xs text-slate-500">
-            FieldSure™ SaaS System Specification & Mockup Dossier • © 2026 Savrdh Technologies Pvt Ltd • All Rights Reserved.
+            FieldSure™ SaaS System Specification & Mockup Dossier • © 2026 Savrdh Technologies • All Rights Reserved.
           </div>
         </div>
 

@@ -25,7 +25,8 @@ import {
   Lock,
   Battery,
   AlertCircle,
-  HelpCircle
+  HelpCircle,
+  Monitor
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import confetti from 'canvas-confetti';
@@ -51,7 +52,8 @@ export const CompanyDashboard: React.FC = () => {
     auditLogs, 
     routePoints, 
     users,
-    showToast 
+    showToast,
+    setViewMode
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'live_map' | 'attendance' | 'tasks_visits' | 'expenses' | 'performance' | 'payroll' | 'audit_privacy'>('live_map');
@@ -133,7 +135,23 @@ export const CompanyDashboard: React.FC = () => {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            onClick={() => {
+              try {
+                const popoutUrl = `${window.location.origin}${window.location.pathname}?view=map_command_center`;
+                window.open(popoutUrl, '_blank', 'width=1400,height=900,menubar=no,toolbar=no,location=no,status=no');
+                showToast('🚀 Live Map launched in independent window for Multi-Screen monitoring!');
+              } catch (e) {
+                setViewMode('map_command_center');
+              }
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-all hover:scale-105 active:scale-95"
+            title="Open Live Map in a dedicated second window for Multi-Monitor setup"
+          >
+            <Monitor className="w-4 h-4" /> 🖥️ Popout Map (Dual-Screen)
+          </button>
+
           <button
             onClick={() => setShowNewTaskModal(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors"
@@ -704,10 +722,10 @@ export const CompanyDashboard: React.FC = () => {
 
               <div className="p-4 rounded-xl border border-slate-200 space-y-2">
                 <span className="font-bold text-slate-900 block">System Audit Log Retention</span>
-                <p className="text-slate-500">Immutable ledger of administrative actions, data views, and approval events.</p>
+                <p className="text-slate-500">Append-only, access-controlled audit trail of administrative actions, data views, and approval events.</p>
                 <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-semibold">
                   <option value="180">180 Days</option>
-                  <option value="365" selected>365 Days (1 Year ISO Standard)</option>
+                  <option value="365" selected>365 Days (1 Year)</option>
                 </select>
               </div>
             </div>
@@ -717,8 +735,8 @@ export const CompanyDashboard: React.FC = () => {
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Immutable Audit Trail</h3>
-                <p className="text-xs text-slate-500">Tracks all administrative lookups, updates, and location views</p>
+                <h3 className="text-sm font-bold text-slate-900">Append-only Audit Trail</h3>
+                <p className="text-xs text-slate-500">Access-controlled record of administrative lookups, updates, and location views</p>
               </div>
               <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-mono">
                 {auditLogs.length} Events Logged
