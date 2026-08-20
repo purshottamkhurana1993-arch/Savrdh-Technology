@@ -20,7 +20,8 @@ import {
   Smartphone,
   Calendar,
   Layers,
-  ArrowUpRight
+  ArrowUpRight,
+  Coffee
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { User, UserRole } from '../../types';
@@ -35,6 +36,7 @@ export const EmployeeRosterView: React.FC<EmployeeRosterViewProps> = ({ onAssign
     currentTenant, 
     currentUser, 
     users, 
+    attendanceRecords,
     addEmployee, 
     removeEmployee, 
     updateEmployeeStatus,
@@ -358,24 +360,52 @@ export const EmployeeRosterView: React.FC<EmployeeRosterViewProps> = ({ onAssign
 
                       {/* Status */}
                       <td className="py-3 px-4">
-                        <button
-                          onClick={() => {
-                            if (isOwner) {
-                              showToast('⚠️ Primary Administrator cannot be deactivated.');
-                              return;
-                            }
-                            updateEmployeeStatus(emp.id, emp.status === 'active' ? 'inactive' : 'active');
-                          }}
-                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ${
-                            emp.status === 'active' 
-                              ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200' 
-                              : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
-                          }`}
-                          title="Click to toggle status"
-                        >
-                          <span className={`w-1.5 h-1.5 rounded-full ${emp.status === 'active' ? 'bg-emerald-600' : 'bg-slate-400'}`} />
-                          <span className="capitalize">{emp.status}</span>
-                        </button>
+                        {(() => {
+                          const empAtt = attendanceRecords.find(a => a.userId === emp.id);
+                          return (
+                            <div className="space-y-1">
+                              <button
+                                onClick={() => {
+                                  if (isOwner) {
+                                    showToast('⚠️ Primary Administrator cannot be deactivated.');
+                                    return;
+                                  }
+                                  updateEmployeeStatus(emp.id, emp.status === 'active' ? 'inactive' : 'active');
+                                }}
+                                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold transition-all ${
+                                  emp.status === 'active' 
+                                    ? 'bg-slate-100 text-slate-700 hover:bg-slate-200' 
+                                    : 'bg-rose-100 text-rose-700 hover:bg-rose-200'
+                                }`}
+                                title="Account Status (Click to toggle)"
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full ${emp.status === 'active' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                                <span className="capitalize">{emp.status}</span>
+                              </button>
+
+                              {/* Live Break / Duty Indicator */}
+                              {empAtt && emp.status === 'active' && (
+                                <div>
+                                  {empAtt.status === 'on_break' ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
+                                      <Coffee className="w-2.5 h-2.5 text-amber-700" />
+                                      <span>On Break ({empAtt.currentBreakReason || 'Rest'})</span>
+                                    </span>
+                                  ) : empAtt.status === 'on_field' ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                                      <span>Live On Field</span>
+                                    </span>
+                                  ) : empAtt.status === 'on_leave' ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-100 text-blue-800">
+                                      <span>🏖️ On Leave</span>
+                                    </span>
+                                  ) : null}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Actions */}

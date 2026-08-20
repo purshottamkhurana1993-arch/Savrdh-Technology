@@ -117,7 +117,7 @@ export interface AttendanceRecord {
   department: string;
   date: string;
   shift: string;
-  status: 'present' | 'absent' | 'late' | 'half_day' | 'on_leave' | 'on_field';
+  status: 'present' | 'absent' | 'late' | 'half_day' | 'on_leave' | 'on_field' | 'on_break';
   punchInTime?: string;
   punchOutTime?: string;
   workingHours: number;
@@ -125,6 +125,8 @@ export interface AttendanceRecord {
   lateMinutes: number;
   approvedStatus: 'approved' | 'pending_correction' | 'regularized';
   notes?: string;
+  currentBreakReason?: string;
+  breakStartTime?: string;
 }
 
 export interface FieldTask {

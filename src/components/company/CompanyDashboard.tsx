@@ -34,14 +34,18 @@ import {
   Sparkles,
   Compass,
   Smartphone,
-  CheckCheck
+  CheckCheck,
+  Coffee,
+  CalendarCheck,
+  CalendarX,
+  FileText
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import confetti from 'canvas-confetti';
 import { LiveDutyGoogleMap } from './LiveDutyGoogleMap';
 import { EmployeeRosterView } from './EmployeeRosterView';
 import { LiveChatDispatchView } from './LiveChatDispatchView';
-import { FieldTask } from '../../types';
+import { FieldTask, LeaveRequest } from '../../types';
 
 export const CompanyDashboard: React.FC = () => {
   const { 
@@ -57,7 +61,8 @@ export const CompanyDashboard: React.FC = () => {
     approveExpense, 
     rejectExpense, 
     leaves, 
-    approveLeave, 
+    approveLeave,
+    rejectLeave,
     performanceWeights, 
     setPerformanceWeights, 
     performanceScores, 
@@ -70,12 +75,18 @@ export const CompanyDashboard: React.FC = () => {
     logout
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'live_map' | 'employees' | 'attendance' | 'tasks_visits' | 'chat_dispatch' | 'expenses' | 'performance' | 'payroll' | 'audit_privacy'>('live_map');
+  const [activeTab, setActiveTab] = useState<'live_map' | 'employees' | 'attendance' | 'leaves_approvals' | 'tasks_visits' | 'chat_dispatch' | 'expenses' | 'performance' | 'payroll' | 'audit_privacy'>('live_map');
   const [selectedEmployeeForMap, setSelectedEmployeeForMap] = useState<string>('emp-rahul-sharma');
   const [searchTerm, setSearchTerm] = useState('');
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
   const [selectedReceiptModal, setSelectedReceiptModal] = useState<string | null>(null);
   const [selectedTaskForProof, setSelectedTaskForProof] = useState<FieldTask | null>(null);
+  
+  // Leave management state
+  const [leaveStatusFilter, setLeaveStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [leaveSearchTerm, setLeaveSearchTerm] = useState('');
+  const [rejectingLeave, setRejectingLeave] = useState<LeaveRequest | null>(null);
+  const [rejectionRemarks, setRejectionRemarks] = useState('');
 
   // Strict Tenant Isolation: Only filter records belonging to this company tenant
   const companyUsers = users.filter(u => u.tenantId === currentTenant.id);
@@ -98,12 +109,14 @@ export const CompanyDashboard: React.FC = () => {
   const [newTaskPriority, setNewTaskPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
   const [newTaskAssignee, setNewTaskAssignee] = useState(companyEmployees[0]?.id || 'emp-rahul-sharma');
 
-  // Attendance metrics
+  // Attendance & Break metrics
   const totalEmployees = companyUsers.length;
-  const presentEmployees = companyAttendance.filter(a => a.status === 'present' || a.status === 'on_field').length;
+  const presentEmployees = companyAttendance.filter(a => a.status === 'present' || a.status === 'on_field' || a.status === 'on_break').length;
   const onFieldEmployees = companyAttendance.filter(a => a.status === 'on_field').length;
+  const onBreakEmployees = companyAttendance.filter(a => a.status === 'on_break').length;
   const lateEmployees = companyAttendance.filter(a => a.status === 'late').length;
   const onLeaveEmployees = companyAttendance.filter(a => a.status === 'on_leave').length;
+  const pendingLeavesCount = companyLeaves.filter(l => l.status === 'pending').length;
 
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
@@ -292,6 +305,30 @@ export const CompanyDashboard: React.FC = () => {
           }`}
         >
           <UserCheck className="w-3.5 h-3.5" /> Attendance & Shifts
+          {onBreakEmployees > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[10px] font-bold">
+              {onBreakEmployees} on break
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('leaves_approvals')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+            activeTab === 'leaves_approvals' ? 'bg-white text-rose-700 shadow-xs ring-1 ring-slate-200/60' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <CalendarCheck className="w-3.5 h-3.5 text-rose-600" />
+          <span>Leave Requests</span>
+          {pendingLeavesCount > 0 ? (
+            <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-extrabold animate-pulse">
+              {pendingLeavesCount} pending
+            </span>
+          ) : (
+            <span className="px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 text-[10px] font-bold">
+              {companyLeaves.length}
+            </span>
+          )}
         </button>
 
         <button
@@ -364,88 +401,465 @@ export const CompanyDashboard: React.FC = () => {
 
       {/* ===================== TAB 2: ATTENDANCE & SHIFTS ===================== */}
       {activeTab === 'attendance' && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">Today's Attendance Master Register</h2>
-              <p className="text-xs text-slate-500">Working hours calculation, punch times, and regularization approvals</p>
+        <div className="space-y-6">
+          {/* Live Attendance & Break Stats Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
+              <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                <span>Total Roster</span>
+                <Users className="w-4 h-4 text-slate-400" />
+              </div>
+              <div className="text-xl font-extrabold text-slate-900">{companyUsers.length}</div>
+              <div className="text-[10px] text-slate-500 mt-1">{companyEmployees.length} Field Officers</div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search employee..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-blue-500"
-                />
+            <div className="bg-white rounded-2xl border border-emerald-200 bg-emerald-50/20 p-4 shadow-xs">
+              <div className="flex items-center justify-between text-xs text-emerald-700 font-semibold mb-1">
+                <span>🟢 On Field Duty</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               </div>
+              <div className="text-xl font-extrabold text-emerald-900">{onFieldEmployees}</div>
+              <div className="text-[10px] text-emerald-600 mt-1">Active GPS Tracked</div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-amber-200 bg-amber-50/30 p-4 shadow-xs">
+              <div className="flex items-center justify-between text-xs text-amber-800 font-bold mb-1">
+                <span className="flex items-center gap-1"><Coffee className="w-3.5 h-3.5 text-amber-600" /> On Break</span>
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+              </div>
+              <div className="text-xl font-extrabold text-amber-900">{onBreakEmployees}</div>
+              <div className="text-[10px] text-amber-700 mt-1">{onBreakEmployees > 0 ? 'Tea / Lunch Break Active' : 'No breaks right now'}</div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-blue-200 bg-blue-50/20 p-4 shadow-xs">
+              <div className="flex items-center justify-between text-xs text-blue-700 font-semibold mb-1">
+                <span>🏖️ On Leave</span>
+                <Calendar className="w-4 h-4 text-blue-500" />
+              </div>
+              <div className="text-xl font-extrabold text-blue-900">{onLeaveEmployees}</div>
+              <div className="text-[10px] text-blue-600 mt-1">Approved Leaves</div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-rose-200 bg-rose-50/30 p-4 shadow-xs cursor-pointer hover:border-rose-300 transition-all" onClick={() => setActiveTab('leaves_approvals')}>
+              <div className="flex items-center justify-between text-xs text-rose-700 font-bold mb-1">
+                <span>📝 Pending Leaves</span>
+                <CalendarCheck className="w-4 h-4 text-rose-600" />
+              </div>
+              <div className="text-xl font-extrabold text-rose-900">{pendingLeavesCount}</div>
+              <div className="text-[10px] text-rose-600 font-bold mt-1">Click to Review →</div>
             </div>
           </div>
 
-          {/* Attendance Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200 text-[10px]">
-                  <th className="py-3 px-3">Employee</th>
-                  <th className="py-3 px-3">Shift Allocated</th>
-                  <th className="py-3 px-3">Status</th>
-                  <th className="py-3 px-3">Punch-In</th>
-                  <th className="py-3 px-3">Hours Logged</th>
-                  <th className="py-3 px-3">Overtime</th>
-                  <th className="py-3 px-3">Approval</th>
-                  <th className="py-3 px-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {companyAttendance
-                  .filter(a => a.employeeName.toLowerCase().includes(searchTerm.toLowerCase()))
-                  .map((att) => (
-                    <tr key={att.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3 px-3 font-medium text-slate-900">
-                        <div>{att.employeeName}</div>
-                        <span className="text-[10px] text-slate-400 font-mono">{att.employeeCode} • {att.department}</span>
-                      </td>
-                      <td className="py-3 px-3 text-slate-600">{att.shift}</td>
-                      <td className="py-3 px-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                          att.status === 'present' || att.status === 'on_field' ? 'bg-emerald-100 text-emerald-800' :
-                          att.status === 'late' ? 'bg-amber-100 text-amber-800' :
-                          att.status === 'on_leave' ? 'bg-blue-100 text-blue-800' :
-                          'bg-rose-100 text-rose-800'
-                        }`}>
-                          {att.status.replace('_', ' ')}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-slate-700 font-semibold">{att.punchInTime || '--:--'}</td>
-                      <td className="py-3 px-3 font-semibold text-slate-900">{att.workingHours} hrs</td>
-                      <td className="py-3 px-3 text-slate-600">{att.overtimeHours ? `+${att.overtimeHours} hrs` : '-'}</td>
-                      <td className="py-3 px-3">
-                        <span className={`text-[10px] font-semibold capitalize ${
-                          att.approvedStatus === 'approved' ? 'text-emerald-700' :
-                          att.approvedStatus === 'regularized' ? 'text-blue-700' :
-                          'text-amber-700'
-                        }`}>
-                          {att.approvedStatus.replace('_', ' ')}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-right">
-                        {att.approvedStatus === 'pending_correction' && (
-                          <button
-                            onClick={() => approveAttendanceCorrection(att.id)}
-                            className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px]"
-                          >
-                            Approve Correction
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Today's Attendance & Real-Time Break Register</h2>
+                <p className="text-xs text-slate-500">Live work status, active break intervals, punch times, and shift approvals</p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search employee..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Attendance Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200 text-[10px]">
+                    <th className="py-3 px-3">Employee</th>
+                    <th className="py-3 px-3">Shift</th>
+                    <th className="py-3 px-3">Live Status</th>
+                    <th className="py-3 px-3">Punch-In</th>
+                    <th className="py-3 px-3">Break Info</th>
+                    <th className="py-3 px-3">Hours Logged</th>
+                    <th className="py-3 px-3">Approval</th>
+                    <th className="py-3 px-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {companyAttendance
+                    .filter(a => a.employeeName.toLowerCase().includes(searchTerm.toLowerCase()))
+                    .map((att) => (
+                      <tr key={att.id} className={`hover:bg-slate-50/80 transition-colors ${att.status === 'on_break' ? 'bg-amber-50/30' : ''}`}>
+                        <td className="py-3 px-3 font-medium text-slate-900">
+                          <div>{att.employeeName}</div>
+                          <span className="text-[10px] text-slate-400 font-mono">{att.employeeCode} • {att.department}</span>
+                        </td>
+                        <td className="py-3 px-3 text-slate-600">{att.shift}</td>
+                        <td className="py-3 px-3">
+                          {att.status === 'on_break' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
+                              <Coffee className="w-3 h-3 text-amber-700" />
+                              <span>ON BREAK</span>
+                            </span>
+                          ) : att.status === 'on_field' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                              <span>ON FIELD</span>
+                            </span>
+                          ) : att.status === 'present' ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800">
+                              PRESENT
+                            </span>
+                          ) : att.status === 'on_leave' ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-blue-100 text-blue-800">
+                              ON LEAVE
+                            </span>
+                          ) : att.status === 'late' ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-100 text-amber-800">
+                              LATE PUNCH
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-rose-100 text-rose-800">
+                              {att.status.replace('_', ' ')}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-slate-700 font-semibold">{att.punchInTime || '--:--'}</td>
+                        <td className="py-3 px-3">
+                          {att.status === 'on_break' ? (
+                            <div className="text-amber-800 font-semibold">
+                              <span className="text-[11px] font-bold">{att.currentBreakReason || 'Break'}</span>
+                              <div className="text-[10px] text-amber-600">Since {att.breakStartTime || 'Just now'}</div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 text-[11px]">-</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 font-semibold text-slate-900">{att.workingHours} hrs</td>
+                        <td className="py-3 px-3">
+                          <span className={`text-[10px] font-semibold capitalize ${
+                            att.approvedStatus === 'approved' ? 'text-emerald-700' :
+                            att.approvedStatus === 'regularized' ? 'text-blue-700' :
+                            'text-amber-700'
+                          }`}>
+                            {att.approvedStatus.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          {att.approvedStatus === 'pending_correction' && (
+                            <button
+                              onClick={() => approveAttendanceCorrection(att.id)}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px]"
+                            >
+                              Approve Correction
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== TAB: LEAVE REQUESTS & APPROVALS ===================== */}
+      {activeTab === 'leaves_approvals' && (
+        <div className="space-y-6">
+          {/* Top Leave Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+              <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                <span>Total Applications</span>
+                <Calendar className="w-4 h-4 text-slate-400" />
+              </div>
+              <div className="text-2xl font-extrabold text-slate-900">{companyLeaves.length}</div>
+              <div className="text-[11px] text-slate-500 mt-1">All time records</div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-amber-200 bg-amber-50/20 p-5 shadow-xs">
+              <div className="flex items-center justify-between text-xs text-amber-800 font-bold mb-1">
+                <span>⏳ Pending Review</span>
+                <Clock className="w-4 h-4 text-amber-600" />
+              </div>
+              <div className="text-2xl font-extrabold text-amber-900">{pendingLeavesCount}</div>
+              <div className="text-[11px] text-amber-700 mt-1">Requires Admin Action</div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-emerald-200 bg-emerald-50/20 p-5 shadow-xs">
+              <div className="flex items-center justify-between text-xs text-emerald-800 font-bold mb-1">
+                <span>✅ Approved Leaves</span>
+                <CalendarCheck className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div className="text-2xl font-extrabold text-emerald-900">
+                {companyLeaves.filter(l => l.status === 'approved').length}
+              </div>
+              <div className="text-[11px] text-emerald-700 mt-1">Granted by Management</div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-rose-200 bg-rose-50/20 p-5 shadow-xs">
+              <div className="flex items-center justify-between text-xs text-rose-800 font-bold mb-1">
+                <span>❌ Rejected Leaves</span>
+                <CalendarX className="w-4 h-4 text-rose-600" />
+              </div>
+              <div className="text-2xl font-extrabold text-rose-900">
+                {companyLeaves.filter(l => l.status === 'rejected').length}
+              </div>
+              <div className="text-[11px] text-rose-700 mt-1">Declined requests</div>
+            </div>
+          </div>
+
+          {/* Main Leave Applications Card */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <CalendarCheck className="w-5 h-5 text-rose-600" />
+                  <span>Employee Leave Applications & Review Portal</span>
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Manage time-off requests submitted by field employees with instant approval & rejection workflows.
+                </p>
+              </div>
+
+              {/* Filters & Search */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                  <button
+                    onClick={() => setLeaveStatusFilter('all')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                      leaveStatusFilter === 'all' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    All ({companyLeaves.length})
+                  </button>
+                  <button
+                    onClick={() => setLeaveStatusFilter('pending')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                      leaveStatusFilter === 'pending' ? 'bg-white text-amber-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Pending ({pendingLeavesCount})
+                  </button>
+                  <button
+                    onClick={() => setLeaveStatusFilter('approved')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                      leaveStatusFilter === 'approved' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Approved
+                  </button>
+                  <button
+                    onClick={() => setLeaveStatusFilter('rejected')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                      leaveStatusFilter === 'rejected' ? 'bg-white text-rose-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Rejected
+                  </button>
+                </div>
+
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search by name, reason, type..."
+                    value={leaveSearchTerm}
+                    onChange={(e) => setLeaveSearchTerm(e.target.value)}
+                    className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-rose-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* List / Grid of Leaves */}
+            {companyLeaves.length === 0 ? (
+              <div className="p-12 text-center space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-500 flex items-center justify-center mx-auto">
+                  <CalendarCheck className="w-6 h-6" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-800">No Leave Applications Found</h3>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  When employees submit leave applications from the Mobile Employee PWA, they will appear here in real time for approval.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {companyLeaves
+                  .filter(l => {
+                    const matchesFilter = leaveStatusFilter === 'all' || l.status === leaveStatusFilter;
+                    const matchesSearch = 
+                      l.employeeName.toLowerCase().includes(leaveSearchTerm.toLowerCase()) ||
+                      l.reason.toLowerCase().includes(leaveSearchTerm.toLowerCase()) ||
+                      l.leaveType.toLowerCase().includes(leaveSearchTerm.toLowerCase());
+                    return matchesFilter && matchesSearch;
+                  })
+                  .map((leave) => {
+                    const isPending = leave.status === 'pending';
+                    const isApproved = leave.status === 'approved';
+                    const isRejected = leave.status === 'rejected';
+
+                    return (
+                      <div
+                        key={leave.id}
+                        className={`rounded-2xl border p-5 transition-all shadow-xs ${
+                          isPending 
+                            ? 'bg-amber-50/20 border-amber-200 ring-1 ring-amber-200/50' 
+                            : isApproved 
+                            ? 'bg-emerald-50/10 border-emerald-200' 
+                            : 'bg-slate-50/50 border-slate-200 opacity-80'
+                        }`}
+                      >
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                          
+                          {/* Left: Employee details & leave badge */}
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-600 to-amber-500 text-white font-bold text-xs flex items-center justify-center shadow-xs">
+                                {leave.employeeName.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                              </div>
+                              <div>
+                                <div className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                                  <span>{leave.employeeName}</span>
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold capitalize ${
+                                    isPending ? 'bg-amber-100 text-amber-800' :
+                                    isApproved ? 'bg-emerald-100 text-emerald-800' :
+                                    'bg-rose-100 text-rose-800'
+                                  }`}>
+                                    ● {leave.status}
+                                  </span>
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  Applied on <span className="font-semibold text-slate-700">{leave.appliedOn}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Leave Details Badges */}
+                            <div className="flex items-center gap-2 flex-wrap text-xs">
+                              <span className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-800 font-bold capitalize">
+                                📋 {leave.leaveType} Leave
+                              </span>
+                              <span className="px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 font-bold">
+                                📅 {leave.startDate} to {leave.endDate}
+                              </span>
+                              <span className="px-2.5 py-1 rounded-lg bg-purple-50 border border-purple-200 text-purple-800 font-bold">
+                                ⏳ {leave.totalDays} {leave.totalDays === 1 ? 'Day' : 'Days'}
+                              </span>
+                            </div>
+
+                            {/* Reason Description */}
+                            <div className="bg-white rounded-xl border border-slate-200/80 p-3 text-xs text-slate-700">
+                              <span className="font-bold text-slate-900 block mb-0.5">Reason for leave:</span>
+                              <p className="italic text-slate-600">"{leave.reason}"</p>
+                            </div>
+
+                            {/* Review Remarks if processed */}
+                            {!isPending && leave.reviewedBy && (
+                              <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                                <span>Reviewed by: <strong className="text-slate-800">{leave.reviewedBy}</strong></span>
+                                {leave.reviewRemarks && <span>• Remarks: <em>"{leave.reviewRemarks}"</em></span>}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Right: Actions */}
+                          <div className="flex items-center gap-2 lg:flex-col lg:items-end justify-end">
+                            {isPending ? (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    approveLeave(leave.id, 'Approved by Company Admin');
+                                    try { confetti({ particleCount: 40, spread: 50 }); } catch (err) {}
+                                  }}
+                                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+                                >
+                                  <Check className="w-3.5 h-3.5" /> Approve Leave
+                                </button>
+                                
+                                <button
+                                  onClick={() => {
+                                    setRejectingLeave(leave);
+                                    setRejectionRemarks('');
+                                  }}
+                                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-all cursor-pointer"
+                                >
+                                  <X className="w-3.5 h-3.5" /> Reject
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="text-right">
+                                <span className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold ${
+                                  isApproved ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                                }`}>
+                                  {isApproved ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> : <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />}
+                                  <span>{isApproved ? 'Leave Approved' : 'Leave Rejected'}</span>
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Reject Leave Remarks Modal */}
+      {rejectingLeave && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <CalendarX className="w-5 h-5 text-rose-600" />
+                <span>Reject Leave Application</span>
+              </h3>
+              <button onClick={() => setRejectingLeave(null)} className="p-1 rounded-lg text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-600 space-y-1">
+              <p>Are you sure you want to decline the leave request for <strong>{rejectingLeave.employeeName}</strong>?</p>
+              <p className="text-slate-500">Duration: {rejectingLeave.startDate} to {rejectingLeave.endDate} ({rejectingLeave.totalDays} days)</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700">Reason / Remarks for Rejection (Optional):</label>
+              <textarea
+                value={rejectionRemarks}
+                onChange={(e) => setRejectionRemarks(e.target.value)}
+                placeholder="e.g. Critical client deliveries scheduled, please reschedule or contact HR..."
+                rows={3}
+                className="w-full p-3 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-rose-500"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setRejectingLeave(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  rejectLeave(rejectingLeave.id, rejectionRemarks || 'Declined by Admin due to operational schedule');
+                  setRejectingLeave(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs"
+              >
+                Confirm Rejection
+              </button>
+            </div>
           </div>
         </div>
       )}

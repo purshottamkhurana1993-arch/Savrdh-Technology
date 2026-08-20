@@ -100,6 +100,7 @@ interface AppContextType {
   leaves: LeaveRequest[];
   applyLeave: (leave: Omit<LeaveRequest, 'id' | 'tenantId' | 'status' | 'appliedOn'>) => void;
   approveLeave: (leaveId: string, remarks?: string) => void;
+  rejectLeave: (leaveId: string, remarks?: string) => void;
   
   // Free Trial Sandbox & Demo Onboarding
   showFreeTrialModal: boolean;
@@ -407,8 +408,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       breaks: [...prev.breaks, { id: breakId, startTime: timeStr, reason }]
     } : null);
 
+    setAttendanceRecords(prev => prev.map(a => 
+      a.userId === currentUser.id ? {
+        ...a,
+        status: 'on_break',
+        currentBreakReason: reason,
+        breakStartTime: timeStr
+      } : a
+    ));
+
     showToast(`⏸️ Break Started: ${reason} at ${timeStr}`);
-    addAuditLog('START_BREAK', 'DutySession', currentDutySession.id, reason);
+    addAuditLog('START_BREAK', 'DutySession', currentDutySession.id, `${currentUser.fullName} went on break: ${reason}`);
   };
 
   const endBreak = () => {
@@ -420,11 +430,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...prev,
       status: 'active',
       breaks: prev.breaks.map((b, i) => i === prev.breaks.length - 1 ? { ...b, endTime: timeStr } : b),
-      totalBreakMinutes: prev.totalBreakMinutes + 25
+      totalBreakMinutes: prev.totalBreakMinutes + 20
     } : null);
 
+    setAttendanceRecords(prev => prev.map(a => 
+      a.userId === currentUser.id ? {
+        ...a,
+        status: 'on_field',
+        currentBreakReason: undefined,
+        breakStartTime: undefined
+      } : a
+    ));
+
     showToast(`▶️ Break Ended at ${timeStr}. Resumed active duty.`);
-    addAuditLog('END_BREAK', 'DutySession', currentDutySession.id, 'Resumed active field duty');
+    addAuditLog('END_BREAK', 'DutySession', currentDutySession.id, `${currentUser.fullName} resumed active field duty`);
   };
 
   const updateConsent = (newConsent: Partial<ConsentRecord>) => {
@@ -452,43 +471,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const completeTaskWithGpsProof = (
     taskId: string, 
-    proofData: {
-      checkInLat: number;
-      checkInLng: number;
-      checkInAddress: string;
-      distanceFromTargetMeters: number;
-      photoProofUrl?: string;
-      completionNotes?: string;
-      clientSignatoryName?: string;
-    }
+    proofDataOrLat: any,
+    maybeLng?: number,
+    maybeAddress?: string,
+    maybeNotes?: string,
+    maybePhotoUrl?: string
   ) => {
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const nowIso = new Date().toISOString();
     
+    // Support both object payload and positional arguments safely
+    let checkInLat = 28.49008;
+    let checkInLng = 77.08506;
+    let checkInAddress = 'Client Site';
+    let distanceFromTargetMeters = 11.2;
+    let completionNotes = 'Task completed at field site with verified GPS check-in.';
+    let photoProofUrl: string | undefined = undefined;
+    let clientSignatoryName: string | undefined = undefined;
+
+    if (typeof proofDataOrLat === 'object' && proofDataOrLat !== null) {
+      checkInLat = typeof proofDataOrLat.checkInLat === 'number' ? proofDataOrLat.checkInLat : checkInLat;
+      checkInLng = typeof proofDataOrLat.checkInLng === 'number' ? proofDataOrLat.checkInLng : checkInLng;
+      checkInAddress = proofDataOrLat.checkInAddress || checkInAddress;
+      distanceFromTargetMeters = typeof proofDataOrLat.distanceFromTargetMeters === 'number' ? proofDataOrLat.distanceFromTargetMeters : 11.2;
+      completionNotes = proofDataOrLat.completionNotes || completionNotes;
+      photoProofUrl = proofDataOrLat.photoProofUrl;
+      clientSignatoryName = proofDataOrLat.clientSignatoryName;
+    } else if (typeof proofDataOrLat === 'number') {
+      checkInLat = proofDataOrLat;
+      checkInLng = typeof maybeLng === 'number' ? maybeLng : checkInLng;
+      checkInAddress = maybeAddress || checkInAddress;
+      completionNotes = maybeNotes || completionNotes;
+      photoProofUrl = maybePhotoUrl;
+      distanceFromTargetMeters = 11.2;
+    }
+    
     setTasks(prev => prev.map(t => {
       if (t.id === taskId) {
+        const radius = t.targetGeofenceRadiusMeters || 100;
         return {
           ...t,
           status: 'completed',
           checkInTime: timeStr,
-          checkInLat: proofData.checkInLat,
-          checkInLng: proofData.checkInLng,
-          checkInAddress: proofData.checkInAddress,
-          distanceFromTargetMeters: proofData.distanceFromTargetMeters,
-          isGeofenceVerified: proofData.distanceFromTargetMeters <= (t.targetGeofenceRadiusMeters || 100),
-          verificationGpsAccuracy: 3.2,
+          checkInLat,
+          checkInLng,
+          checkInAddress: checkInAddress || t.clientAddress,
+          distanceFromTargetMeters,
+          isGeofenceVerified: distanceFromTargetMeters <= radius,
+          verificationGpsAccuracy: 2.8,
           batteryAtCheckIn: 82,
           completedAt: nowIso,
-          completionNotes: proofData.completionNotes || t.completionNotes || 'Task completed at field site with verified GPS check-in.',
-          proofImageUrl: proofData.photoProofUrl || t.proofImageUrl,
-          clientSignatoryName: proofData.clientSignatoryName || t.clientSignatoryName
+          completionNotes: completionNotes || t.completionNotes || 'Task completed at field site with verified GPS check-in.',
+          proofImageUrl: photoProofUrl || t.proofImageUrl,
+          clientSignatoryName: clientSignatoryName || t.clientSignatoryName
         };
       }
       return t;
     }));
 
-    addAuditLog('COMPLETED_TASK_GEOFENCE_VERIFIED', 'FieldTask', taskId, `GPS verified at ${proofData.distanceFromTargetMeters.toFixed(1)}m from site pin`);
-    showToast(`✅ Task GPS Check-In Verified (${proofData.distanceFromTargetMeters.toFixed(1)}m from site). Marked Completed!`);
+    addAuditLog('COMPLETED_TASK_GEOFENCE_VERIFIED', 'FieldTask', taskId, `GPS verified at ${distanceFromTargetMeters.toFixed(1)}m from site pin`);
+    showToast(`✅ Task GPS Check-In Verified (${distanceFromTargetMeters.toFixed(1)}m from site). Marked Completed!`);
   };
 
   const addTask = (taskData: Omit<FieldTask, 'id' | 'tenantId'>) => {
@@ -593,19 +635,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       appliedOn: new Date().toISOString().slice(0, 10)
     };
     setLeaves(prev => [newLeave, ...prev]);
-    addAuditLog('APPLY_LEAVE', 'LeaveRequest', newLeave.id, `${leaveData.totalDays} day(s) ${leaveData.leaveType} leave`);
-    showToast('Leave request submitted.');
+    addAuditLog('APPLY_LEAVE', 'LeaveRequest', newLeave.id, `${leaveData.employeeName} applied for ${leaveData.totalDays} day(s) ${leaveData.leaveType} leave (${leaveData.startDate} to ${leaveData.endDate})`);
+    showToast(`📝 Leave request (${leaveData.totalDays}d ${leaveData.leaveType}) submitted for Manager / Admin approval.`);
   };
 
   const approveLeave = (leaveId: string, remarks?: string) => {
+    let targetLeave: LeaveRequest | undefined;
+    setLeaves(prev => prev.map(l => {
+      if (l.id === leaveId) {
+        targetLeave = l;
+        return {
+          ...l,
+          status: 'approved',
+          reviewedBy: currentUser.fullName,
+          reviewRemarks: remarks || 'Approved by HR & Admin'
+        };
+      }
+      return l;
+    }));
+
+    if (targetLeave) {
+      // Also update employee attendance status to 'on_leave'
+      const empId = targetLeave.userId;
+      setAttendanceRecords(prev => prev.map(a => 
+        a.userId === empId ? { ...a, status: 'on_leave', notes: `Leave Approved: ${targetLeave?.leaveType} (${remarks || 'Approved by Admin'})` } : a
+      ));
+    }
+
+    addAuditLog('APPROVE_LEAVE', 'LeaveRequest', leaveId, remarks || 'Approved leave request by Admin');
+    showToast(`✅ Leave request approved successfully.`);
+  };
+
+  const rejectLeave = (leaveId: string, remarks?: string) => {
     setLeaves(prev => prev.map(l => l.id === leaveId ? {
       ...l,
-      status: 'approved',
+      status: 'rejected',
       reviewedBy: currentUser.fullName,
-      reviewRemarks: remarks || 'Approved by HR'
+      reviewRemarks: remarks || 'Leave request declined'
     } : l));
-    addAuditLog('APPROVE_LEAVE', 'LeaveRequest', leaveId, remarks || 'Approved leave');
-    showToast('Leave request approved.');
+    addAuditLog('REJECT_LEAVE', 'LeaveRequest', leaveId, remarks || 'Rejected leave application');
+    showToast(`❌ Leave application declined.`);
   };
 
   const createSupportTicket = (ticketData: Omit<SupportTicket, 'id' | 'ticketNumber' | 'createdAt' | 'status'>) => {
@@ -1116,6 +1185,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         leaves,
         applyLeave,
         approveLeave,
+        rejectLeave,
         showFreeTrialModal,
         setShowFreeTrialModal,
         startCompanyTrial,

@@ -159,13 +159,24 @@ export const EmployeePWA: React.FC = () => {
   const handleLeaveSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!leaveReason) return;
+    
+    let days = 1;
+    try {
+      const s = new Date(leaveStartDate);
+      const ed = new Date(leaveEndDate);
+      const diff = Math.round((ed.getTime() - s.getTime()) / (1000 * 3600 * 24)) + 1;
+      days = diff > 0 ? diff : 1;
+    } catch (err) {
+      days = 1;
+    }
+
     applyLeave({
       userId: currentUser.id,
       employeeName: currentUser.fullName,
       leaveType,
       startDate: leaveStartDate,
       endDate: leaveEndDate,
-      totalDays: 1,
+      totalDays: days,
       reason: leaveReason
     });
     setLeaveReason('');
@@ -748,19 +759,28 @@ export const EmployeePWA: React.FC = () => {
             {/* Leave requests section */}
             <div className="pt-3 border-t border-slate-800 space-y-2">
               <h3 className="text-xs font-bold text-white uppercase tracking-wider">Leave Applications</h3>
-              {myLeaves.map((l) => (
-                <div key={l.id} className="bg-slate-900/60 border border-slate-800 p-3 rounded-xl flex items-center justify-between text-xs">
-                  <div>
-                    <span className="font-bold text-white">{l.leaveType} Leave ({l.totalDays} Day)</span>
+              {myLeaves.length === 0 ? (
+                <p className="text-xs text-slate-500 italic">No leaves applied this month.</p>
+              ) : (
+                myLeaves.map((l) => (
+                  <div key={l.id} className="bg-slate-900/60 border border-slate-800 p-3 rounded-xl space-y-1 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-white">{l.leaveType} Leave ({l.totalDays} {l.totalDays === 1 ? 'Day' : 'Days'})</span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
+                        l.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' :
+                        l.status === 'rejected' ? 'bg-rose-500/20 text-rose-400' :
+                        'bg-amber-500/20 text-amber-400'
+                      }`}>
+                        {l.status}
+                      </span>
+                    </div>
                     <p className="text-[11px] text-slate-400">{l.startDate} to {l.endDate} • {l.reason}</p>
+                    {l.reviewRemarks && (
+                      <p className="text-[10px] text-slate-500 italic">Admin feedback: {l.reviewRemarks}</p>
+                    )}
                   </div>
-                  <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
-                    l.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
-                  }`}>
-                    {l.status}
-                  </span>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         )}
@@ -1215,26 +1235,29 @@ export const EmployeePWA: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  const targetLat = showTaskProofModal.targetLat || 28.6315;
-                  const targetLng = showTaskProofModal.targetLng || 77.2167;
+                  const targetLat = showTaskProofModal.targetLat || 28.49008;
+                  const targetLng = showTaskProofModal.targetLng || 77.08506;
                   // Simulate on-site check-in coordinates within 11.2 meters
                   const actualLat = targetLat + 0.00008;
                   const actualLng = targetLng + 0.00006;
                   
                   completeTaskWithGpsProof(
                     showTaskProofModal.id,
-                    actualLat,
-                    actualLng,
-                    showTaskProofModal.clientAddress,
-                    taskProofNotes || 'Task completed on-site with verified GPS coordinates.',
-                    taskPhotoAttached ? 'https://images.unsplash.com/photo-1554415707-9e49016a35f3?w=300&q=80' : undefined
+                    {
+                      checkInLat: actualLat,
+                      checkInLng: actualLng,
+                      checkInAddress: showTaskProofModal.clientAddress,
+                      distanceFromTargetMeters: 11.2,
+                      completionNotes: taskProofNotes || 'Task completed on-site with verified GPS coordinates.',
+                      photoProofUrl: taskPhotoAttached ? 'https://images.unsplash.com/photo-1554415707-9e49016a35f3?w=300&q=80' : undefined
+                    }
                   );
                   setShowTaskProofModal(null);
                   setTaskProofNotes('');
                   setTaskPhotoAttached(false);
                   triggerConfetti();
                 }}
-                className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-900/40 transition-colors"
+                className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-98 text-white text-xs font-bold shadow-md shadow-emerald-900/40 transition-all cursor-pointer"
               >
                 Submit GPS Proof ✓
               </button>
