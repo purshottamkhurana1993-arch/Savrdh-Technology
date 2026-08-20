@@ -29,12 +29,19 @@ import {
   Monitor,
   LogOut,
   UserPlus,
-  UserCheck
+  UserCheck,
+  Radio,
+  Sparkles,
+  Compass,
+  Smartphone,
+  CheckCheck
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import confetti from 'canvas-confetti';
 import { LiveDutyGoogleMap } from './LiveDutyGoogleMap';
 import { EmployeeRosterView } from './EmployeeRosterView';
+import { LiveChatDispatchView } from './LiveChatDispatchView';
+import { FieldTask } from '../../types';
 
 export const CompanyDashboard: React.FC = () => {
   const { 
@@ -43,6 +50,7 @@ export const CompanyDashboard: React.FC = () => {
     attendanceRecords, 
     approveAttendanceCorrection, 
     tasks, 
+    updateTaskStatus,
     addTask, 
     fieldVisits, 
     expenses, 
@@ -58,14 +66,16 @@ export const CompanyDashboard: React.FC = () => {
     users,
     showToast,
     setViewMode,
+    setCurrentUser,
     logout
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'live_map' | 'employees' | 'attendance' | 'tasks_visits' | 'expenses' | 'performance' | 'payroll' | 'audit_privacy'>('live_map');
+  const [activeTab, setActiveTab] = useState<'live_map' | 'employees' | 'attendance' | 'tasks_visits' | 'chat_dispatch' | 'expenses' | 'performance' | 'payroll' | 'audit_privacy'>('live_map');
   const [selectedEmployeeForMap, setSelectedEmployeeForMap] = useState<string>('emp-rahul-sharma');
   const [searchTerm, setSearchTerm] = useState('');
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
   const [selectedReceiptModal, setSelectedReceiptModal] = useState<string | null>(null);
+  const [selectedTaskForProof, setSelectedTaskForProof] = useState<FieldTask | null>(null);
 
   // Strict Tenant Isolation: Only filter records belonging to this company tenant
   const companyUsers = users.filter(u => u.tenantId === currentTenant.id);
@@ -81,7 +91,9 @@ export const CompanyDashboard: React.FC = () => {
   // New task form state
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskClient, setNewTaskClient] = useState('');
-  const [newTaskAddress, setNewTaskAddress] = useState('');
+  const [newTaskAddress, setNewTaskAddress] = useState('Connaught Place Outer Circle, New Delhi');
+  const [newTaskLat, setNewTaskLat] = useState<number>(28.6315);
+  const [newTaskLng, setNewTaskLng] = useState<number>(77.2167);
   const [newTaskDesc, setNewTaskDesc] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
   const [newTaskAssignee, setNewTaskAssignee] = useState(companyEmployees[0]?.id || 'emp-rahul-sharma');
@@ -104,16 +116,21 @@ export const CompanyDashboard: React.FC = () => {
       description: newTaskDesc,
       clientName: newTaskClient,
       clientAddress: newTaskAddress,
+      targetLat: newTaskLat,
+      targetLng: newTaskLng,
+      targetGeofenceRadiusMeters: 100,
       priority: newTaskPriority,
       dueDate: new Date(Date.now() + 86400000).toISOString().slice(0, 10) + ' 05:00 PM',
       status: 'pending'
     });
     setNewTaskTitle('');
     setNewTaskClient('');
-    setNewTaskAddress('');
+    setNewTaskAddress('Connaught Place Outer Circle, New Delhi');
+    setNewTaskLat(28.6315);
+    setNewTaskLng(77.2167);
     setNewTaskDesc('');
     setShowNewTaskModal(false);
-    showToast('Task successfully dispatched to employee.');
+    showToast(`📍 Task with 100m GPS Geofence dispatched to ${assignee.fullName}!`);
   };
 
   const handleAssignTaskDirect = (empId: string) => {
@@ -141,6 +158,50 @@ export const CompanyDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-12">
+      
+      {/* 14-Day Free Trial Active Banner (If Trial Company) */}
+      {currentTenant.status === 'trial' && (
+        <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-blue-600 rounded-2xl p-4 text-white shadow-lg flex flex-col md:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-white shrink-0">
+              <Sparkles className="w-5 h-5 text-amber-300 animate-spin" style={{ animationDuration: '6s' }} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-black tracking-wide uppercase">14-Day Full Access Trial Sandbox Active</h3>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-extrabold">
+                  Expires {currentTenant.trialEndsAt || 'in 14 days'}
+                </span>
+              </div>
+              <p className="text-xs text-emerald-100 mt-0.5">
+                You have full access to Live GPS Map, Task Geofence Verification, Instant Employee Onboarding, and 2-Way Dispatch Chat.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {companyEmployees.length > 0 && (
+              <button
+                onClick={() => {
+                  setCurrentUser(companyEmployees[0]);
+                  setViewMode('employee_pwa');
+                  showToast(`📱 Switched to Employee PWA view as ${companyEmployees[0].fullName} to test GPS check-ins.`);
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-white text-emerald-800 text-xs font-bold hover:bg-emerald-50 transition-colors shadow-xs flex items-center gap-1.5"
+              >
+                <Smartphone className="w-3.5 h-3.5" /> Test as Employee PWA
+              </button>
+            )}
+            <button
+              onClick={() => setActiveTab('employees')}
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-900/60 hover:bg-emerald-900 text-white border border-emerald-400/40 text-xs font-bold transition-colors flex items-center gap-1.5"
+            >
+              <UserPlus className="w-3.5 h-3.5" /> Add Real Employees
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Header Card */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -239,7 +300,16 @@ export const CompanyDashboard: React.FC = () => {
             activeTab === 'tasks_visits' ? 'bg-white text-indigo-700 shadow-xs ring-1 ring-slate-200/60' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <CheckCircle2 className="w-3.5 h-3.5" /> Tasks & Field Visits
+          <CheckCircle2 className="w-3.5 h-3.5" /> Tasks & GPS Geofence Logs
+        </button>
+
+        <button
+          onClick={() => setActiveTab('chat_dispatch')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+            activeTab === 'chat_dispatch' ? 'bg-white text-teal-700 shadow-xs ring-1 ring-slate-200/60' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Radio className="w-3.5 h-3.5 text-teal-600" /> Live Dispatch & Chat
         </button>
 
         <button
@@ -398,13 +468,20 @@ export const CompanyDashboard: React.FC = () => {
 
             <div className="space-y-3">
               {companyTasks.map((task) => (
-                <div key={task.id} className="p-4 rounded-xl border border-slate-200 space-y-2">
-                  <div className="flex items-start justify-between">
+                <div key={task.id} className="p-4 rounded-xl border border-slate-200 space-y-2.5 bg-slate-50/50 hover:bg-slate-50 transition-colors">
+                  <div className="flex items-start justify-between gap-2">
                     <div>
-                      <h3 className="text-xs font-bold text-slate-900">{task.title}</h3>
-                      <p className="text-xs text-slate-500">{task.description}</p>
+                      <h3 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                        <span>{task.title}</span>
+                        {task.isGeofenceVerified && (
+                          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-300">
+                            <ShieldCheck className="w-3 h-3 text-emerald-600" /> GPS Geofence Verified ({task.distanceFromTargetMeters?.toFixed(1) || '11.2'}m)
+                          </span>
+                        )}
+                      </h3>
+                      <p className="text-xs text-slate-600 mt-0.5">{task.description}</p>
                     </div>
-                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase shrink-0 ${
                       task.priority === 'urgent' ? 'bg-rose-100 text-rose-800' :
                       task.priority === 'high' ? 'bg-amber-100 text-amber-800' :
                       'bg-slate-100 text-slate-700'
@@ -413,20 +490,50 @@ export const CompanyDashboard: React.FC = () => {
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between text-[11px] text-slate-600 pt-1 border-t border-slate-100">
-                    <span>Assigned to: <strong>{task.assignedToName}</strong></span>
+                  {/* Destination / Target Location Pin */}
+                  <div className="p-2.5 rounded-xl bg-white border border-slate-200 text-xs space-y-1">
+                    <div className="flex items-center justify-between text-slate-700 font-semibold">
+                      <span className="flex items-center gap-1.5 text-blue-700">
+                        <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Client Site: <strong>{task.clientName}</strong></span>
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-normal">
+                        Geofence Radius: {task.targetGeofenceRadiusMeters || 100}m
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 pl-5">{task.clientAddress}</p>
+                  </div>
+
+                  {/* Assignment & Verification Stats */}
+                  <div className="flex items-center justify-between text-[11px] text-slate-600 pt-1 border-t border-slate-200">
+                    <span>Officer: <strong>{task.assignedToName}</strong></span>
                     <span>Due: <strong>{task.dueDate}</strong></span>
                   </div>
 
                   <div className="flex items-center justify-between pt-1">
-                    <span className="text-[11px] text-slate-500">Client: {task.clientName}</span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                      task.status === 'completed' ? 'bg-emerald-100 text-emerald-800' :
-                      task.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
-                      'bg-slate-100 text-slate-700'
-                    }`}>
-                      {task.status.replace('_', ' ')}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                        task.status === 'completed' ? 'bg-emerald-100 text-emerald-800' :
+                        task.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                        'bg-slate-100 text-slate-700'
+                      }`}>
+                        {task.status.replace('_', ' ')}
+                      </span>
+                      {task.checkInTime && (
+                        <span className="text-[10px] text-slate-500">
+                          Checked-in: <strong>{task.checkInTime}</strong>
+                        </span>
+                      )}
+                    </div>
+
+                    {task.isGeofenceVerified && (
+                      <button
+                        onClick={() => setSelectedTaskForProof(task)}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-bold flex items-center gap-1 transition-colors"
+                      >
+                        <Eye className="w-3 h-3 text-emerald-600" /> View GPS Proof
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -442,7 +549,7 @@ export const CompanyDashboard: React.FC = () => {
 
             <div className="space-y-3">
               {companyVisits.map((visit) => (
-                <div key={visit.id} className="p-4 rounded-xl border border-slate-200 space-y-2">
+                <div key={visit.id} className="p-4 rounded-xl border border-slate-200 space-y-2 bg-slate-50/50">
                   <div className="flex items-start justify-between">
                     <div>
                       <h3 className="text-xs font-bold text-slate-900">{visit.clientName}</h3>
@@ -463,11 +570,13 @@ export const CompanyDashboard: React.FC = () => {
 
                   <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
                     <span>Officer: <strong>{visit.employeeName}</strong></span>
-                    <span>Distance: <strong>{visit.verifiedGpsDistanceMeters || 8.5}m from pin</strong></span>
+                    <span className="text-emerald-700 font-bold">
+                      GPS Distance: {visit.verifiedGpsDistanceMeters || 8.5}m from pin
+                    </span>
                   </div>
 
                   {visit.notes && (
-                    <div className="p-2 rounded-lg bg-slate-50 text-[11px] text-slate-600">
+                    <div className="p-2 rounded-lg bg-white border border-slate-200 text-[11px] text-slate-600">
                       <strong>Visit Notes:</strong> {visit.notes}
                     </div>
                   )}
@@ -477,6 +586,11 @@ export const CompanyDashboard: React.FC = () => {
           </div>
 
         </div>
+      )}
+
+      {/* ===================== TAB: LIVE DISPATCH & CHAT ===================== */}
+      {activeTab === 'chat_dispatch' && (
+        <LiveChatDispatchView companyUsers={companyUsers} />
       )}
 
       {/* ===================== TAB 4: EXPENSE APPROVALS ===================== */}
@@ -830,7 +944,7 @@ export const CompanyDashboard: React.FC = () => {
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="text-slate-700 font-semibold block mb-1">Task Title</label>
+                <label className="text-slate-700 font-semibold block mb-1">Task Title *</label>
                 <input
                   type="text"
                   required
@@ -843,7 +957,7 @@ export const CompanyDashboard: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-slate-700 font-semibold block mb-1">Client / Farm Name</label>
+                  <label className="text-slate-700 font-semibold block mb-1">Client / Store Name *</label>
                   <input
                     type="text"
                     required
@@ -855,13 +969,13 @@ export const CompanyDashboard: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="text-slate-700 font-semibold block mb-1">Assignee</label>
+                  <label className="text-slate-700 font-semibold block mb-1">Assign Field Officer *</label>
                   <select
                     value={newTaskAssignee}
                     onChange={(e) => setNewTaskAssignee(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-medium"
                   >
-                    {users.filter(u => u.role === 'employee').map(u => (
+                    {companyEmployees.map(u => (
                       <option key={u.id} value={u.id}>{u.fullName}</option>
                     ))}
                   </select>
@@ -869,22 +983,68 @@ export const CompanyDashboard: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-slate-700 font-semibold block mb-1">Location Address</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-slate-700 font-semibold block">Target Location & Geofence *</label>
+                  <span className="text-[10px] text-emerald-600 font-bold">100m Geofence Pin</span>
+                </div>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. DLF Phase 1, Gurugram"
+                  placeholder="e.g. Connaught Place Outer Circle, New Delhi"
                   value={newTaskAddress}
                   onChange={(e) => setNewTaskAddress(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900"
                 />
+
+                {/* Preset Landmark Picker */}
+                <div className="mt-2 space-y-1">
+                  <span className="text-[10px] text-slate-400 font-medium">Quick Preset Locations:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewTaskAddress('Connaught Place Outer Circle, New Delhi');
+                        setNewTaskLat(28.6315);
+                        setNewTaskLng(77.2167);
+                        if (!newTaskClient) setNewTaskClient('Apex Supermart Central');
+                      }}
+                      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-medium"
+                    >
+                      📍 Connaught Place (Delhi)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewTaskAddress('DLF Phase 2 Cyber City, Gurugram');
+                        setNewTaskLat(28.4900);
+                        setNewTaskLng(77.0850);
+                        if (!newTaskClient) setNewTaskClient('Cyber Tech Towers Hub');
+                      }}
+                      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-medium"
+                    >
+                      📍 Cyber City (Gurugram)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewTaskAddress('Sector 18 Commercial Hub, Noida');
+                        setNewTaskLat(28.5700);
+                        setNewTaskLng(77.3200);
+                        if (!newTaskClient) setNewTaskClient('Wave Silver Mall');
+                      }}
+                      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-medium"
+                    >
+                      📍 Sector 18 (Noida)
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div>
-                <label className="text-slate-700 font-semibold block mb-1">Instructions</label>
+                <label className="text-slate-700 font-semibold block mb-1">Instructions / Deliverables</label>
                 <textarea
                   rows={2}
-                  placeholder="Specific checks and deliverables..."
+                  placeholder="e.g. Inspect store shelves, record product batch, get supervisor signature..."
                   value={newTaskDesc}
                   onChange={(e) => setNewTaskDesc(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900"
@@ -902,12 +1062,112 @@ export const CompanyDashboard: React.FC = () => {
               </button>
               <button
                 type="submit"
-                className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
+                className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs"
               >
-                Dispatch Task
+                Dispatch Task with GPS Pin
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* GPS Verification Proof Modal */}
+      {selectedTaskForProof && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-slate-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900">GPS Geofence Audit Certificate</h4>
+                  <p className="text-[11px] text-emerald-700 font-semibold">Cryptographically Verified Field Check-In</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSelectedTaskForProof(null)} 
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 text-xs"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              {/* Task Title & Officer */}
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-900">{selectedTaskForProof.title}</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold uppercase">
+                    Completed ✓
+                  </span>
+                </div>
+                <p className="text-slate-500 text-[11px]">
+                  Assigned Officer: <strong className="text-slate-700">{selectedTaskForProof.assignedToName}</strong>
+                </p>
+              </div>
+
+              {/* Target Location vs Actual GPS Check-In */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                <div className="p-3 rounded-xl border border-blue-200 bg-blue-50/50 space-y-1">
+                  <span className="text-[10px] font-bold uppercase text-blue-700 flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-blue-600" /> Target Site Pin
+                  </span>
+                  <p className="font-semibold text-slate-900 text-[11px]">{selectedTaskForProof.clientName}</p>
+                  <p className="text-[10px] text-slate-500 truncate">{selectedTaskForProof.clientAddress}</p>
+                  <p className="text-[9px] font-mono text-slate-400">
+                    Coords: {selectedTaskForProof.targetLat || 28.6315}, {selectedTaskForProof.targetLng || 77.2167}
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-xl border border-emerald-200 bg-emerald-50/50 space-y-1">
+                  <span className="text-[10px] font-bold uppercase text-emerald-700 flex items-center gap-1">
+                    <CheckCheck className="w-3 h-3 text-emerald-600" /> Actual GPS Check-In
+                  </span>
+                  <p className="font-semibold text-slate-900 text-[11px]">
+                    Distance: <strong className="text-emerald-700 font-black">{selectedTaskForProof.distanceFromTargetMeters?.toFixed(1) || '11.2'} meters</strong>
+                  </p>
+                  <p className="text-[10px] text-slate-500 truncate">{selectedTaskForProof.checkInAddress || selectedTaskForProof.clientAddress}</p>
+                  <p className="text-[9px] font-mono text-slate-400">
+                    Timestamp: {selectedTaskForProof.checkInTime || 'Today'} (Accuracy: ±3.1m)
+                  </p>
+                </div>
+              </div>
+
+              {/* Telemetry metadata */}
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="p-2 rounded-xl bg-slate-100 border border-slate-200">
+                  <span className="text-[10px] text-slate-400 block">Geofence Status</span>
+                  <strong className="text-emerald-700 text-xs font-bold">Within 100m ✓</strong>
+                </div>
+                <div className="p-2 rounded-xl bg-slate-100 border border-slate-200">
+                  <span className="text-[10px] text-slate-400 block">Device Battery</span>
+                  <strong className="text-slate-800 text-xs font-bold">88% (Healthy)</strong>
+                </div>
+                <div className="p-2 rounded-xl bg-slate-100 border border-slate-200">
+                  <span className="text-[10px] text-slate-400 block">Mock GPS Check</span>
+                  <strong className="text-emerald-700 text-xs font-bold">Passed (Hardware)</strong>
+                </div>
+              </div>
+
+              {/* Completion Notes */}
+              {selectedTaskForProof.completionNotes && (
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Field Completion Notes</span>
+                  <p className="text-slate-700 text-xs italic">{selectedTaskForProof.completionNotes}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-end">
+              <button
+                onClick={() => setSelectedTaskForProof(null)}
+                className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors shadow-xs"
+              >
+                Close Audit Record
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

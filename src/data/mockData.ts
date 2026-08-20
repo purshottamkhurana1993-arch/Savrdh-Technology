@@ -538,9 +538,20 @@ export const mockTasks: FieldTask[] = [
     description: 'Verify bio-security fence, check hatchery ventilation fans and record ambient humidity log.',
     clientName: 'GreenPastures Farm #3',
     clientAddress: 'Plot 12, Sohna Rural Belt, Gurugram',
+    targetLat: 28.3580,
+    targetLng: 77.0420,
+    targetGeofenceRadiusMeters: 100,
     priority: 'high',
     dueDate: '2026-08-17 04:00 PM',
-    status: 'in_progress'
+    status: 'in_progress',
+    checkInTime: '02:15 PM',
+    checkInLat: 28.3581,
+    checkInLng: 77.0421,
+    checkInAddress: 'Sohna Rural Agro Hub, Gurugram',
+    distanceFromTargetMeters: 14.8,
+    isGeofenceVerified: true,
+    verificationGpsAccuracy: 3.5,
+    batteryAtCheckIn: 78
   },
   {
     id: 'task-102',
@@ -552,6 +563,9 @@ export const mockTasks: FieldTask[] = [
     description: 'Deliver new organic poultry cutlets display sample kit and collect signed acknowledgment.',
     clientName: 'Modern Bazaar Mega Store',
     clientAddress: 'DLF Phase 1 Market, Gurugram',
+    targetLat: 28.4725,
+    targetLng: 77.0910,
+    targetGeofenceRadiusMeters: 100,
     priority: 'medium',
     dueDate: '2026-08-17 06:30 PM',
     status: 'pending'
@@ -566,11 +580,24 @@ export const mockTasks: FieldTask[] = [
     description: 'Calibrate digital temperature dataloggers on transport reefer truck DL-1L-8890.',
     clientName: 'FrostLogix Cold Chain Terminal',
     clientAddress: 'Kapashera Border, New Delhi',
+    targetLat: 28.5280,
+    targetLng: 77.0850,
+    targetGeofenceRadiusMeters: 100,
     priority: 'urgent',
     dueDate: '2026-08-17 02:00 PM',
     status: 'completed',
     completedAt: '2026-08-17 01:45 PM',
-    completionNotes: 'Temperature verified at -18.2°C. Calibration certificate stamped & uploaded.'
+    checkInTime: '01:15 PM',
+    checkInLat: 28.5281,
+    checkInLng: 77.0852,
+    checkInAddress: 'Kapashera Cold Terminal Bay #4',
+    distanceFromTargetMeters: 8.2,
+    isGeofenceVerified: true,
+    verificationGpsAccuracy: 2.8,
+    batteryAtCheckIn: 84,
+    completionNotes: 'Temperature verified at -18.2°C. Calibration certificate stamped & uploaded.',
+    proofImageUrl: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=400&q=80',
+    clientSignatoryName: 'Harish Nair (Facility Supervisor)'
   }
 ];
 

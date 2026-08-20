@@ -78,6 +78,15 @@ interface AppContextType {
   approveAttendanceCorrection: (recordId: string) => void;
   tasks: FieldTask[];
   updateTaskStatus: (taskId: string, status: FieldTask['status'], notes?: string) => void;
+  completeTaskWithGpsProof: (taskId: string, proofData: {
+    checkInLat: number;
+    checkInLng: number;
+    checkInAddress: string;
+    distanceFromTargetMeters: number;
+    photoProofUrl?: string;
+    completionNotes?: string;
+    clientSignatoryName?: string;
+  }) => void;
   addTask: (task: Omit<FieldTask, 'id' | 'tenantId'>) => void;
   fieldVisits: FieldVisit[];
   checkInVisit: (visitId: string, lat?: number, lng?: number) => void;
@@ -92,6 +101,19 @@ interface AppContextType {
   applyLeave: (leave: Omit<LeaveRequest, 'id' | 'tenantId' | 'status' | 'appliedOn'>) => void;
   approveLeave: (leaveId: string, remarks?: string) => void;
   
+  // Free Trial Sandbox & Demo Onboarding
+  showFreeTrialModal: boolean;
+  setShowFreeTrialModal: (val: boolean) => void;
+  startCompanyTrial: (trialData: {
+    companyName: string;
+    ownerName: string;
+    email: string;
+    phone: string;
+    industry: string;
+    maxEmployees: number;
+    prefillSampleData: boolean;
+  }) => void;
+
   // Performance Engine
   performanceWeights: PerformanceWeightConfig;
   setPerformanceWeights: React.Dispatch<React.SetStateAction<PerformanceWeightConfig>>;
@@ -375,6 +397,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast(`Task status updated to: ${status.replace('_', ' ').toUpperCase()}`);
   };
 
+  const completeTaskWithGpsProof = (
+    taskId: string, 
+    proofData: {
+      checkInLat: number;
+      checkInLng: number;
+      checkInAddress: string;
+      distanceFromTargetMeters: number;
+      photoProofUrl?: string;
+      completionNotes?: string;
+      clientSignatoryName?: string;
+    }
+  ) => {
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const nowIso = new Date().toISOString();
+    
+    setTasks(prev => prev.map(t => {
+      if (t.id === taskId) {
+        return {
+          ...t,
+          status: 'completed',
+          checkInTime: timeStr,
+          checkInLat: proofData.checkInLat,
+          checkInLng: proofData.checkInLng,
+          checkInAddress: proofData.checkInAddress,
+          distanceFromTargetMeters: proofData.distanceFromTargetMeters,
+          isGeofenceVerified: proofData.distanceFromTargetMeters <= (t.targetGeofenceRadiusMeters || 100),
+          verificationGpsAccuracy: 3.2,
+          batteryAtCheckIn: 82,
+          completedAt: nowIso,
+          completionNotes: proofData.completionNotes || t.completionNotes || 'Task completed at field site with verified GPS check-in.',
+          proofImageUrl: proofData.photoProofUrl || t.proofImageUrl,
+          clientSignatoryName: proofData.clientSignatoryName || t.clientSignatoryName
+        };
+      }
+      return t;
+    }));
+
+    addAuditLog('COMPLETED_TASK_GEOFENCE_VERIFIED', 'FieldTask', taskId, `GPS verified at ${proofData.distanceFromTargetMeters.toFixed(1)}m from site pin`);
+    showToast(`✅ Task GPS Check-In Verified (${proofData.distanceFromTargetMeters.toFixed(1)}m from site). Marked Completed!`);
+  };
+
   const addTask = (taskData: Omit<FieldTask, 'id' | 'tenantId'>) => {
     const newTask: FieldTask = {
       ...taskData,
@@ -603,6 +666,257 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast(`Status of ${emp.fullName} updated to ${status}.`);
   };
 
+  const [showFreeTrialModal, setShowFreeTrialModal] = useState<boolean>(false);
+
+  const startCompanyTrial = (trialData: {
+    companyName: string;
+    ownerName: string;
+    email: string;
+    phone: string;
+    industry: string;
+    maxEmployees: number;
+    prefillSampleData: boolean;
+  }) => {
+    const rawCode = trialData.companyName.replace(/[^a-zA-Z]/g, '').slice(0, 6).toUpperCase();
+    const code = rawCode || 'TRIAL';
+    const trialTenantId = `tenant-${code.toLowerCase()}-${Date.now().toString().slice(-4)}`;
+    
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + 14);
+
+    const newTenant: Tenant = {
+      id: trialTenantId,
+      name: trialData.companyName,
+      code,
+      contactEmail: trialData.email,
+      contactPhone: trialData.phone,
+      plan: 'Growth',
+      status: 'trial',
+      trialEndsAt: expiryDate.toISOString().slice(0, 10),
+      maxEmployees: trialData.maxEmployees || 25,
+      activeEmployees: trialData.prefillSampleData ? 3 : 1,
+      billingAddress: `Sector 62, Corporate Park (${trialData.industry})`,
+      createdAt: new Date().toISOString().slice(0, 10),
+      retentionDaysGps: 90,
+      retentionDaysAudit: 365,
+      features: {
+        liveTracking: true,
+        geofencing: true,
+        expenseManagement: true,
+        performanceScoring: true,
+        payrollExport: true,
+        apiAccess: true
+      }
+    };
+
+    const ownerUserId = `user-${trialTenantId}-owner`;
+    const ownerUser: User = {
+      id: ownerUserId,
+      tenantId: trialTenantId,
+      role: 'company_owner',
+      fullName: trialData.ownerName,
+      email: trialData.email,
+      phone: trialData.phone,
+      employeeCode: `${code}-ADM-01`,
+      designation: 'Managing Director & Operations Head',
+      department: 'Executive Leadership',
+      branch: 'Main HQ',
+      status: 'active',
+      createdAt: new Date().toISOString().slice(0, 10)
+    };
+
+    const sampleUsers: User[] = [ownerUser];
+    const sampleDuty: DutySession[] = [];
+    const sampleTasks: FieldTask[] = [];
+    const sampleVisits: FieldVisit[] = [];
+    const sampleExpenses: ExpenseRecord[] = [];
+    const sampleMessages: InAppMessage[] = [
+      {
+        id: `msg-welcome-${Date.now()}`,
+        tenantId: trialTenantId,
+        senderId: 'user-savrdh-root',
+        senderName: 'Savrdh Platform Dispatcher',
+        senderRole: 'super_admin',
+        recipientId: 'all_team',
+        recipientName: 'All Operations Team',
+        content: `🎉 Welcome to ${trialData.companyName}! Your 14-day full-featured trial sandbox is live. You can dispatch field tasks, verify GPS geofences, and live-track field duty sessions.`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isRead: false,
+        type: 'announcement'
+      }
+    ];
+
+    if (trialData.prefillSampleData) {
+      const emp1Id = `emp-${trialTenantId}-1`;
+      const emp2Id = `emp-${trialTenantId}-2`;
+
+      const emp1: User = {
+        id: emp1Id,
+        tenantId: trialTenantId,
+        role: 'employee',
+        fullName: 'Amit Kumar (Field Lead)',
+        email: `amit@${code.toLowerCase()}demo.com`,
+        phone: '+91 98111 22334',
+        employeeCode: `${code}-FLD-101`,
+        designation: 'Senior Route Executive',
+        department: 'Field Operations',
+        branch: 'Zone North',
+        reportingManagerId: ownerUserId,
+        status: 'active',
+        createdAt: new Date().toISOString().slice(0, 10)
+      };
+
+      const emp2: User = {
+        id: emp2Id,
+        tenantId: trialTenantId,
+        role: 'employee',
+        fullName: 'Pooja Verma (Quality Officer)',
+        email: `pooja@${code.toLowerCase()}demo.com`,
+        phone: '+91 98111 22335',
+        employeeCode: `${code}-FLD-102`,
+        designation: 'Area Quality Inspector',
+        department: 'Quality Assurance',
+        branch: 'Zone Central',
+        reportingManagerId: ownerUserId,
+        status: 'active',
+        createdAt: new Date().toISOString().slice(0, 10)
+      };
+
+      sampleUsers.push(emp1, emp2);
+
+      sampleDuty.push({
+        id: `duty-${trialTenantId}-1`,
+        tenantId: trialTenantId,
+        userId: emp1Id,
+        employeeName: emp1.fullName,
+        shiftName: 'General Field Shift (09:00 AM - 06:00 PM)',
+        date: new Date().toISOString().slice(0, 10),
+        punchInTime: '09:05 AM',
+        punchInLocation: {
+          lat: 28.5355,
+          lng: 77.3910,
+          address: 'Sector 18 Market Hub, Noida',
+          accuracyMeters: 4.5
+        },
+        status: 'active',
+        totalDutyMinutes: 320,
+        totalBreakMinutes: 15,
+        breaks: [],
+        currentLocation: {
+          lat: 28.5380,
+          lng: 77.3940,
+          address: 'Atta Market Sector 27, Noida (GPS Active)',
+          batteryLevel: 86,
+          isMockGpsDetected: false,
+          lastPingAt: 'Just now'
+        }
+      });
+
+      sampleTasks.push(
+        {
+          id: `task-${trialTenantId}-1`,
+          tenantId: trialTenantId,
+          assignedToUserId: emp1Id,
+          assignedToName: emp1.fullName,
+          createdById: ownerUserId,
+          title: 'Client Site Inspection & Stock Auditing',
+          description: 'Inspect shelf placement, scan inventory barcode, verify refrigeration and record supervisor acknowledgment.',
+          clientName: 'Apex Supermart Outlet #4',
+          clientAddress: 'Connaught Place Outer Circle, New Delhi',
+          targetLat: 28.6315,
+          targetLng: 77.2167,
+          targetGeofenceRadiusMeters: 100,
+          priority: 'urgent',
+          dueDate: 'Today 04:30 PM',
+          status: 'in_progress',
+          checkInTime: '01:40 PM',
+          checkInLat: 28.6314,
+          checkInLng: 77.2168,
+          checkInAddress: 'Connaught Place Outer Circle, New Delhi',
+          distanceFromTargetMeters: 11.2,
+          isGeofenceVerified: true,
+          verificationGpsAccuracy: 3.1,
+          batteryAtCheckIn: 88
+        },
+        {
+          id: `task-${trialTenantId}-2`,
+          tenantId: trialTenantId,
+          assignedToUserId: emp2Id,
+          assignedToName: emp2.fullName,
+          createdById: ownerUserId,
+          title: 'New Merchant POS Setup & KYC Verification',
+          description: 'Deploy merchant payment terminal, collect signature on trade agreement and take store facade photo.',
+          clientName: 'Heritage Mart Retailers',
+          clientAddress: 'DLF Phase 2 Cyber City, Gurugram',
+          targetLat: 28.4900,
+          targetLng: 77.0850,
+          targetGeofenceRadiusMeters: 100,
+          priority: 'high',
+          dueDate: 'Today 06:00 PM',
+          status: 'pending'
+        }
+      );
+
+      sampleVisits.push({
+        id: `vis-${trialTenantId}-1`,
+        tenantId: trialTenantId,
+        userId: emp1Id,
+        employeeName: emp1.fullName,
+        clientName: 'Apex Supermart Outlet #4',
+        clientContact: '+91 99100 44556 (Mr. Rajesh)',
+        purpose: 'Scheduled Quality Audit',
+        address: 'Connaught Place Outer Circle, New Delhi',
+        lat: 28.6315,
+        lng: 77.2167,
+        status: 'checked_in',
+        checkInTime: '01:40 PM',
+        checkInLat: 28.6314,
+        checkInLng: 77.2168,
+        verifiedGpsDistanceMeters: 11.2
+      });
+
+      sampleExpenses.push({
+        id: `exp-${trialTenantId}-1`,
+        tenantId: trialTenantId,
+        userId: emp1Id,
+        employeeName: emp1.fullName,
+        date: new Date().toISOString().slice(0, 10),
+        category: 'Fuel / Travel',
+        amount: 350,
+        currency: 'INR',
+        description: 'Two-wheeler fuel claim for North Zone client visit rounds (38 km)',
+        status: 'pending',
+        createdAt: new Date().toISOString().slice(0, 16)
+      });
+    }
+
+    // Update state
+    setTenants(prev => [newTenant, ...prev]);
+    setUsers(prev => [...sampleUsers, ...prev]);
+    if (sampleDuty.length > 0) {
+      setCurrentDutySession(sampleDuty[0]);
+    }
+    if (sampleTasks.length > 0) {
+      setTasks(prev => [...sampleTasks, ...prev]);
+    }
+    if (sampleVisits.length > 0) {
+      setFieldVisits(prev => [...sampleVisits, ...prev]);
+    }
+    if (sampleExpenses.length > 0) {
+      setExpenses(prev => [...sampleExpenses, ...prev]);
+    }
+    setMessages(prev => [...sampleMessages, ...prev]);
+
+    // Log the user in directly as the trial company owner
+    setCurrentTenant(newTenant);
+    setCurrentUser(ownerUser);
+    setIsLoggedIn(true);
+    setViewMode('company_admin');
+    setShowFreeTrialModal(false);
+
+    showToast(`🚀 Trial Company "${newTenant.name}" is now live! 14-Day Full Sandbox Activated.`);
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -638,6 +952,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         approveAttendanceCorrection,
         tasks,
         updateTaskStatus,
+        completeTaskWithGpsProof,
         addTask,
         fieldVisits,
         checkInVisit,
@@ -651,6 +966,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         leaves,
         applyLeave,
         approveLeave,
+        showFreeTrialModal,
+        setShowFreeTrialModal,
+        startCompanyTrial,
         performanceWeights,
         setPerformanceWeights,
         performanceScores,

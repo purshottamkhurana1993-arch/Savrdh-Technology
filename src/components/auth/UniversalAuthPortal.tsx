@@ -45,7 +45,8 @@ export const UniversalAuthPortal: React.FC = () => {
     language,
     isLoggedIn,
     login,
-    logout
+    logout,
+    setShowFreeTrialModal
   } = useApp();
 
   // Active Auth Tab: default to 3-role login
@@ -193,16 +194,24 @@ export const UniversalAuthPortal: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-800/80 p-1.5 rounded-2xl border border-slate-700/80">
+          <div className="flex flex-col sm:flex-row items-center gap-2.5">
+            <button
+              onClick={() => setShowFreeTrialModal(true)}
+              className="px-4 py-2.5 rounded-xl text-xs font-black bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 shadow-lg hover:shadow-amber-500/25 transition-all flex items-center gap-1.5 hover:scale-105 active:scale-95 whitespace-nowrap"
+            >
+              <Sparkles className="w-4 h-4 text-slate-900 animate-spin" style={{ animationDuration: '4s' }} />
+              <span>🚀 Start 14-Day Free Company Trial</span>
+            </button>
+
             <button
               onClick={() => {
                 if (currentUser.role === 'super_admin') setViewMode('super_admin');
                 else if (currentUser.role === 'employee') setViewMode('employee_pwa');
                 else setViewMode('company_admin');
               }}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-700 hover:bg-slate-600 text-white transition-all"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all whitespace-nowrap"
             >
-              ← Back to Active Dashboard
+              ← Active Dashboard
             </button>
           </div>
         </div>

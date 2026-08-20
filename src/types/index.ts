@@ -137,12 +137,24 @@ export interface FieldTask {
   description: string;
   clientName: string;
   clientAddress: string;
+  targetLat?: number;
+  targetLng?: number;
+  targetGeofenceRadiusMeters?: number; // e.g. 100m
   priority: 'low' | 'medium' | 'high' | 'urgent';
   dueDate: string;
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  checkInTime?: string;
+  checkInLat?: number;
+  checkInLng?: number;
+  checkInAddress?: string;
+  distanceFromTargetMeters?: number;
+  isGeofenceVerified?: boolean;
+  verificationGpsAccuracy?: number;
+  batteryAtCheckIn?: number;
   completedAt?: string;
   completionNotes?: string;
   proofImageUrl?: string;
+  clientSignatoryName?: string;
 }
 
 export interface FieldVisit {

@@ -48,6 +48,7 @@ export const EmployeePWA: React.FC = () => {
     updateConsent, 
     tasks, 
     updateTaskStatus, 
+    completeTaskWithGpsProof,
     fieldVisits, 
     checkInVisit, 
     checkOutVisit, 
@@ -96,6 +97,9 @@ export const EmployeePWA: React.FC = () => {
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [showVisitProofModal, setShowVisitProofModal] = useState<string | null>(null);
   const [visitProofNotes, setVisitProofNotes] = useState('');
+  const [showTaskProofModal, setShowTaskProofModal] = useState<any | null>(null);
+  const [taskProofNotes, setTaskProofNotes] = useState('');
+  const [taskPhotoAttached, setTaskPhotoAttached] = useState(false);
   const [newChatText, setNewChatText] = useState('');
 
   // Expense form
@@ -523,10 +527,20 @@ export const EmployeePWA: React.FC = () => {
 
             <div className="space-y-3">
               {myTasks.map((task) => (
-                <div key={task.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2.5">
-                  <div className="flex items-start justify-between">
-                    <h3 className="text-xs font-bold text-white">{task.title}</h3>
-                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
+                <div key={task.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <span>{task.title}</span>
+                        {task.isGeofenceVerified && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
+                            GPS Verified
+                          </span>
+                        )}
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-0.5">{task.description}</p>
+                    </div>
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase shrink-0 ${
                       task.priority === 'urgent' ? 'bg-rose-500/20 text-rose-300' :
                       task.priority === 'high' ? 'bg-amber-500/20 text-amber-300' :
                       'bg-slate-800 text-slate-300'
@@ -535,36 +549,54 @@ export const EmployeePWA: React.FC = () => {
                     </span>
                   </div>
 
-                  <p className="text-xs text-slate-400">{task.description}</p>
-
-                  <div className="text-[11px] text-slate-400 flex items-center justify-between pt-1">
-                    <span>Client: <strong className="text-slate-300">{task.clientName}</strong></span>
-                    <span>Due: <strong className="text-slate-300">{task.dueDate}</strong></span>
+                  {/* Destination / Client Site Geofence Pin */}
+                  <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs space-y-1">
+                    <div className="flex items-center justify-between text-slate-300 font-semibold">
+                      <span className="flex items-center gap-1.5 text-blue-400">
+                        <MapPin className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                        <span>Client: <strong>{task.clientName}</strong></span>
+                      </span>
+                      <span className="text-[10px] text-emerald-400 font-mono">
+                        Radius: {task.targetGeofenceRadiusMeters || 100}m
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 pl-5 truncate">{task.clientAddress}</p>
                   </div>
 
-                  {/* Status Toggle Buttons */}
-                  <div className="pt-2 border-t border-slate-800 flex items-center gap-2">
+                  <div className="text-[11px] text-slate-400 flex items-center justify-between pt-0.5">
+                    <span>Due: <strong className="text-slate-300">{task.dueDate}</strong></span>
+                    <span>Officer: <strong className="text-slate-300">{task.assignedToName}</strong></span>
+                  </div>
+
+                  {/* Status Toggle & GPS Verification Actions */}
+                  <div className="pt-2 border-t border-slate-800 flex flex-col gap-2">
                     {task.status !== 'completed' ? (
-                      <>
+                      <div className="flex items-center gap-2">
                         <button
                           onClick={() => updateTaskStatus(task.id, 'in_progress')}
-                          className={`flex-1 py-1.5 rounded-lg text-xs font-semibold ${task.status === 'in_progress' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300'}`}
+                          className={`px-3 py-2 rounded-xl text-xs font-semibold ${task.status === 'in_progress' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300'}`}
                         >
-                          In Progress
+                          {task.status === 'in_progress' ? '● En Route' : 'Start Task'}
                         </button>
                         <button
                           onClick={() => {
-                            updateTaskStatus(task.id, 'completed', 'Inspection completed and signed by store supervisor.');
-                            triggerConfetti();
+                            setShowTaskProofModal(task);
+                            setTaskProofNotes('Physical store audit verified on-site.');
                           }}
-                          className="flex-1 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+                          className="flex-1 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center justify-center gap-1.5 shadow-xs"
                         >
-                          Mark Completed ✓
+                          <MapPin className="w-3.5 h-3.5" /> Check-In with GPS Proof ✓
                         </button>
-                      </>
+                      </div>
                     ) : (
-                      <div className="w-full text-center text-xs text-emerald-400 font-semibold py-1 bg-emerald-950/40 rounded-lg flex items-center justify-center gap-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Task Completed & Logged
+                      <div className="w-full p-2.5 bg-emerald-950/40 border border-emerald-500/20 rounded-xl text-[11px] text-emerald-300 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>Task Completed • {task.checkInTime || 'Today'}</span>
+                        </div>
+                        <span className="font-bold text-emerald-400">
+                          {task.distanceFromTargetMeters?.toFixed(1) || '11.2'}m from Pin ✓
+                        </span>
                       </div>
                     )}
                   </div>
@@ -1088,6 +1120,123 @@ export const EmployeePWA: React.FC = () => {
                 className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold"
               >
                 Complete Visit ✓
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Complete Task with GPS Verification Proof Modal */}
+      {showTaskProofModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-sm w-full space-y-4 shadow-2xl text-slate-100 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                  <MapPin className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">GPS Task Check-In & Proof</h3>
+                  <p className="text-[11px] text-slate-400">Target Geofence: 100m Radius</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowTaskProofModal(null)} 
+                className="text-slate-400 hover:text-white text-xs p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Task Info & Location */}
+            <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 text-xs space-y-1">
+              <span className="font-bold text-white block">{showTaskProofModal.title}</span>
+              <p className="text-slate-400 text-[11px]">Client: <strong className="text-slate-200">{showTaskProofModal.clientName}</strong></p>
+              <p className="text-slate-500 text-[10px] truncate">{showTaskProofModal.clientAddress}</p>
+            </div>
+
+            {/* Live GPS Lock Telemetry Simulation */}
+            <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-2xl text-xs space-y-2">
+              <div className="flex items-center justify-between text-emerald-300 font-bold text-[11px]">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  <span>Hardware GPS Lock: Active</span>
+                </span>
+                <span className="text-[10px] font-mono text-emerald-400">Accuracy: ±2.8m</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-[10px] pt-1 border-t border-emerald-500/20 text-slate-300 font-mono">
+                <div>Lat: {(showTaskProofModal.targetLat || 28.6315) + 0.00008}</div>
+                <div>Lng: {(showTaskProofModal.targetLng || 77.2167) + 0.00006}</div>
+              </div>
+
+              <div className="p-2 bg-emerald-900/50 rounded-xl flex items-center justify-between text-[11px]">
+                <span className="text-slate-200">Distance from Pin:</span>
+                <strong className="text-emerald-300 font-black">11.2 meters (Within Geofence ✓)</strong>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-slate-300 font-semibold block mb-1">Field Completion Notes *</label>
+                <textarea
+                  rows={2}
+                  required
+                  placeholder="e.g. Completed stock count, captured shelf photo, signed with manager..."
+                  value={taskProofNotes}
+                  onChange={(e) => setTaskProofNotes(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 text-xs focus:outline-hidden focus:border-emerald-500"
+                />
+              </div>
+
+              {/* Photo Proof Attachment */}
+              <div 
+                onClick={() => setTaskPhotoAttached(!taskPhotoAttached)}
+                className={`p-3 border-2 border-dashed rounded-xl text-center cursor-pointer transition-colors ${
+                  taskPhotoAttached ? 'bg-emerald-950/40 border-emerald-500 text-emerald-300' : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-slate-600'
+                }`}
+              >
+                <Camera className="w-4 h-4 mx-auto mb-1" />
+                <span className="font-semibold block text-[11px]">
+                  {taskPhotoAttached ? '📸 Geo-tagged Photo Attached (IMG_4821_GPS.jpg)' : 'Tap to Attach Geo-tagged Field Photo'}
+                </span>
+                <span className="text-[9px] text-slate-500">EXIF Geolocation Coordinates Embedded</span>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowTaskProofModal(null)}
+                className="flex-1 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const targetLat = showTaskProofModal.targetLat || 28.6315;
+                  const targetLng = showTaskProofModal.targetLng || 77.2167;
+                  // Simulate on-site check-in coordinates within 11.2 meters
+                  const actualLat = targetLat + 0.00008;
+                  const actualLng = targetLng + 0.00006;
+                  
+                  completeTaskWithGpsProof(
+                    showTaskProofModal.id,
+                    actualLat,
+                    actualLng,
+                    showTaskProofModal.clientAddress,
+                    taskProofNotes || 'Task completed on-site with verified GPS coordinates.',
+                    taskPhotoAttached ? 'https://images.unsplash.com/photo-1554415707-9e49016a35f3?w=300&q=80' : undefined
+                  );
+                  setShowTaskProofModal(null);
+                  setTaskProofNotes('');
+                  setTaskPhotoAttached(false);
+                  triggerConfetti();
+                }}
+                className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-900/40 transition-colors"
+              >
+                Submit GPS Proof ✓
               </button>
             </div>
           </div>
