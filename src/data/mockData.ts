@@ -14,7 +14,8 @@ import {
   SaaSInvoice, 
   SupportTicket, 
   AuditLog, 
-  ConsentRecord 
+  ConsentRecord,
+  ShiftPolicyConfig
 } from '../types';
 
 /**
@@ -104,7 +105,48 @@ export const mockRoutePoints: RoutePoint[] = [];
 
 export const mockAttendanceRecords: AttendanceRecord[] = [];
 
-export const mockTasks: FieldTask[] = [];
+export const mockTasks: FieldTask[] = [
+  {
+    id: 'task-rahul-01',
+    tenantId: 'tenant-apex',
+    assignedToUserId: 'emp-rahul-sharma',
+    assignedToName: 'Rahul Sharma (Field Lead)',
+    createdById: 'user-apex-admin',
+    title: 'Client Geofence Inspection & Hardware Audit',
+    description: 'Perform physical site audit, inspect IoT gateway antennas, and verify 100m geofence accuracy at Airtel Enterprise Hub.',
+    clientName: 'Bharti Airtel Enterprise Hub',
+    clientAddress: 'Tower A, Barakhamba Road, Connaught Place, New Delhi, 110001',
+    targetLat: 28.6328,
+    targetLng: 77.2235,
+    targetGeofenceRadiusMeters: 100,
+    priority: 'high',
+    dueDate: '2026-08-20',
+    status: 'in_progress',
+    tripStartedAt: '09:30 AM',
+    initialTripDistanceMeters: 2800,
+    lastKnownDistanceMeters: 920,
+    lastKnownEtaMinutes: 4,
+    lastHeadingStatus: 'approaching'
+  },
+  {
+    id: 'task-rahul-02',
+    tenantId: 'tenant-apex',
+    assignedToUserId: 'emp-rahul-sharma',
+    assignedToName: 'Rahul Sharma (Field Lead)',
+    createdById: 'user-apex-admin',
+    title: 'POS Terminal Maintenance & Sign-Off',
+    description: 'Deliver replacement POS terminal, test 4G SIM connectivity, and acquire manager signature.',
+    clientName: 'Max Healthcare Corporate Office',
+    clientAddress: 'Press Enclave Road, Saket, New Delhi, 110017',
+    targetLat: 28.5276,
+    targetLng: 77.2135,
+    targetGeofenceRadiusMeters: 150,
+    priority: 'urgent',
+    dueDate: '2026-08-20',
+    status: 'pending',
+    initialTripDistanceMeters: 12400
+  }
+];
 
 export const mockFieldVisits: FieldVisit[] = [];
 
@@ -114,10 +156,31 @@ export const mockMessages: InAppMessage[] = [];
 
 export const mockLeaves: LeaveRequest[] = [];
 
+export const defaultShiftPolicy: ShiftPolicyConfig = {
+  shiftName: 'General Field Operations Shift',
+  shiftStartTime: '09:00',
+  shiftEndTime: '18:00',
+  minWorkHoursRequired: 8.0,
+  maxAllowedBreakMinutes: 45,
+  maxAllowedBreaksCount: 2,
+  restrictEarlyPunchOut: true,
+  requireGeofenceForPunch: true,
+  requireEarlyExitReason: true,
+  performanceWeights: {
+    taskCompletionWeight: 40,
+    shiftAdherenceWeight: 25,
+    breakDisciplineWeight: 20,
+    gpsAccuracyWeight: 15
+  }
+};
+
 export const defaultPerformanceWeights: PerformanceWeightConfig = {
-  attendanceWeight: 30,
+  taskCompletionWeight: 40,
+  shiftAdherenceWeight: 25,
+  breakDisciplineWeight: 20,
+  gpsAccuracyWeight: 15,
+  attendanceWeight: 25,
   workingHoursWeight: 25,
-  taskCompletionWeight: 25,
   visitCompletionWeight: 15,
   managerFeedbackWeight: 5
 };

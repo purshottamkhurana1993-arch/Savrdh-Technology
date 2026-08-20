@@ -13,16 +13,25 @@ import {
   Search,
   MessageSquare,
   ShieldCheck,
-  Zap
+  Zap,
+  Navigation,
+  Compass,
+  Battery,
+  ExternalLink,
+  Radar
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { User, InAppMessage } from '../../types';
 
 interface LiveChatDispatchViewProps {
   companyUsers: User[];
+  onNavigateToMap?: (employeeId?: string) => void;
 }
 
-export const LiveChatDispatchView: React.FC<LiveChatDispatchViewProps> = ({ companyUsers }) => {
+export const LiveChatDispatchView: React.FC<LiveChatDispatchViewProps> = ({ 
+  companyUsers,
+  onNavigateToMap 
+}) => {
   const { 
     currentUser, 
     currentTenant, 
@@ -52,10 +61,10 @@ export const LiveChatDispatchView: React.FC<LiveChatDispatchViewProps> = ({ comp
 
   const activeThreadMessages = tenantMessages.filter(m => {
     if (selectedRecipientId === 'all_team') {
-      return m.recipientId === 'all_team' || m.type === 'announcement';
+      return m.recipientId === 'all_team' || m.type === 'announcement' || m.type === 'location_request' || (m.type === 'location_share' && m.recipientId === 'all_team');
     }
     return (
-      (m.senderId === selectedRecipientId && (m.recipientId === currentUser.id || m.recipientId === 'admin_ops')) ||
+      (m.senderId === selectedRecipientId && (m.recipientId === currentUser.id || m.recipientId === 'admin_ops' || m.recipientId === 'all_team')) ||
       (m.senderId === currentUser.id && m.recipientId === selectedRecipientId) ||
       (m.recipientId === selectedRecipientId)
     );
@@ -69,18 +78,35 @@ export const LiveChatDispatchView: React.FC<LiveChatDispatchViewProps> = ({ comp
       ? 'All Field Operations Team' 
       : selectedEmployee?.fullName || 'Field Employee';
 
-    sendMessage(inputText.trim(), selectedRecipientId, recipientName);
+    // Detect if admin is asking for location
+    const isLocationQuery = /location|loacation|gps|kahan|where/i.test(inputText);
+
+    sendMessage(
+      inputText.trim(), 
+      selectedRecipientId, 
+      recipientName,
+      {
+        type: isLocationQuery ? 'location_request' : (selectedRecipientId === 'all_team' ? 'announcement' : 'direct')
+      }
+    );
     setInputText('');
     showToast(`📤 Message dispatched to ${recipientName}`);
   };
 
-  const handleQuickDispatch = (templateText: string) => {
+  const handleQuickDispatch = (templateText: string, isLocationReq: boolean = false) => {
     const recipientName = selectedRecipientId === 'all_team' 
       ? 'All Field Operations Team' 
       : selectedEmployee?.fullName || 'Field Employee';
 
-    sendMessage(templateText, selectedRecipientId, recipientName);
-    showToast(`⚡ Quick dispatch alert sent!`);
+    sendMessage(
+      templateText, 
+      selectedRecipientId, 
+      recipientName,
+      {
+        type: isLocationReq ? 'location_request' : (selectedRecipientId === 'all_team' ? 'announcement' : 'direct')
+      }
+    );
+    showToast(isLocationReq ? `📍 Live location request broadcasted!` : `⚡ Quick dispatch alert sent!`);
   };
 
   return (
@@ -135,7 +161,7 @@ export const LiveChatDispatchView: React.FC<LiveChatDispatchViewProps> = ({ comp
                   <span>📢 All Team Broadcast</span>
                 </div>
                 <p className="text-[11px] text-slate-400 truncate max-w-[140px]">
-                  Send alerts to all active agents
+                  Send alerts & request live GPS
                 </p>
               </div>
             </div>
@@ -203,22 +229,40 @@ export const LiveChatDispatchView: React.FC<LiveChatDispatchViewProps> = ({ comp
               </h4>
               <p className="text-xs text-slate-400">
                 {selectedRecipientId === 'all_team' 
-                  ? 'Official announcements reach all field agents immediately'
+                  ? 'Official announcements & live location requests reach all field agents'
                   : `${selectedEmployee?.department || 'Field Ops'} • ${selectedEmployee?.phone || '+91 98765 00000'}`
                 }
               </p>
             </div>
           </div>
 
-          {selectedRecipientId !== 'all_team' && selectedEmployee?.phone && (
-            <a
-              href={`tel:${selectedEmployee.phone}`}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors text-xs flex items-center gap-1.5 font-semibold"
+          <div className="flex items-center gap-2">
+            {/* Quick Request Location Button */}
+            <button
+              onClick={() => handleQuickDispatch(
+                selectedRecipientId === 'all_team'
+                  ? '📍 ATTENTION ALL FIELD AGENTS: Please share your current live GPS location immediately.'
+                  : `📍 Attention ${selectedEmployee?.fullName || 'agent'}: Please share your current live GPS location immediately.`,
+                true
+              )}
+              className="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 hover:text-white transition-all text-xs flex items-center gap-1.5 font-bold shadow-xs active:scale-95"
+              title="Send an official directive asking for live GPS coordinates"
             >
-              <Phone className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Call</span>
-            </a>
-          )}
+              <Navigation className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+              <span className="hidden sm:inline">Request Live Location</span>
+              <span className="sm:hidden">Request GPS</span>
+            </button>
+
+            {selectedRecipientId !== 'all_team' && selectedEmployee?.phone && (
+              <a
+                href={`tel:${selectedEmployee.phone}`}
+                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors text-xs flex items-center gap-1.5 font-semibold"
+              >
+                <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="hidden sm:inline">Call</span>
+              </a>
+            )}
+          </div>
         </div>
 
         {/* Rapid Canned Dispatch Bar */}
@@ -226,6 +270,16 @@ export const LiveChatDispatchView: React.FC<LiveChatDispatchViewProps> = ({ comp
           <span className="text-[11px] font-bold text-slate-400 shrink-0 flex items-center gap-1">
             <Zap className="w-3.5 h-3.5 text-amber-400" /> Rapid Dispatch:
           </span>
+
+          {/* Prominent Live Location Broadcast Button */}
+          <button
+            onClick={() => handleQuickDispatch('📍 ALL EMPLOYEES: Please send your current live GPS location immediately.', true)}
+            className="px-2.5 py-1 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 hover:text-white text-[11px] font-bold whitespace-nowrap transition-colors border border-emerald-500/50 flex items-center gap-1 shadow-xs"
+          >
+            <MapPin className="w-3 h-3 text-emerald-400 animate-bounce" />
+            <span>📍 Request Live Location</span>
+          </button>
+
           <button
             onClick={() => handleQuickDispatch('📍 Priority: Please proceed to the next assigned client location immediately.')}
             className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] whitespace-nowrap transition-colors border border-slate-700"
@@ -259,13 +313,15 @@ export const LiveChatDispatchView: React.FC<LiveChatDispatchViewProps> = ({ comp
               <MessageSquare className="w-10 h-10 text-slate-600 mb-2" />
               <p className="text-sm font-semibold text-slate-300">No messages in this channel yet</p>
               <p className="text-xs text-slate-500 max-w-sm mt-1">
-                Type an official directive below or click a rapid dispatch template to communicate with field team.
+                Type an official directive below, broadcast a live location request, or click a rapid dispatch template.
               </p>
             </div>
           ) : (
             activeThreadMessages.map(msg => {
               const isMine = msg.senderId === currentUser.id || msg.senderRole === 'company_owner' || msg.senderRole === 'company_hr';
               const isAnnouncement = msg.type === 'announcement' || msg.recipientId === 'all_team';
+              const isLocationRequest = msg.type === 'location_request';
+              const isLocationShare = msg.type === 'location_share' || !!msg.locationData;
 
               return (
                 <div
@@ -275,19 +331,103 @@ export const LiveChatDispatchView: React.FC<LiveChatDispatchViewProps> = ({ comp
                   <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mb-0.5">
                     <span className="font-semibold text-slate-300">{msg.senderName}</span>
                     <span>• {msg.timestamp}</span>
+                    {isLocationShare && (
+                      <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-bold text-[9px] flex items-center gap-0.5 border border-emerald-500/30">
+                        <MapPin className="w-2.5 h-2.5" /> LIVE GPS PING
+                      </span>
+                    )}
                   </div>
 
-                  <div
-                    className={`p-3 rounded-2xl max-w-[80%] text-xs leading-relaxed ${
-                      isMine
-                        ? 'bg-blue-600 text-white rounded-br-xs'
-                        : isAnnouncement
-                        ? 'bg-amber-950/80 border border-amber-800 text-amber-200 rounded-bl-xs'
-                        : 'bg-slate-800 border border-slate-700 text-slate-200 rounded-bl-xs'
-                    }`}
-                  >
-                    {msg.content}
-                  </div>
+                  {/* Message Content Bubble */}
+                  {isLocationShare && msg.locationData ? (
+                    // Rich Live GPS Location Card
+                    <div className="max-w-[90%] sm:max-w-md w-full bg-slate-950 border border-emerald-500/40 rounded-2xl p-3.5 space-y-3 shadow-lg shadow-emerald-950/20 text-xs">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <div className="flex items-center gap-2 text-emerald-400 font-bold">
+                          <div className="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                            <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+                          </div>
+                          <span>Live GPS Location Report</span>
+                        </div>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 animate-pulse">
+                          ● Live Telemetry
+                        </span>
+                      </div>
+
+                      {/* Address & Coordinates */}
+                      <div className="space-y-1 bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
+                        <p className="text-white font-semibold text-xs flex items-start gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                          <span>{msg.locationData.address}</span>
+                        </p>
+                        <div className="text-[11px] font-mono text-slate-400 pl-5">
+                          GPS: {msg.locationData.lat.toFixed(5)}° N, {msg.locationData.lng.toFixed(5)}° E
+                        </div>
+                      </div>
+
+                      {/* Telemetry metadata chips */}
+                      <div className="flex flex-wrap items-center gap-2 text-[10px]">
+                        <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-slate-300 flex items-center gap-1 font-medium">
+                          <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                          <span>±{msg.locationData.accuracyMeters || '2.5'}m Precision</span>
+                        </span>
+                        {msg.locationData.batteryLevel && (
+                          <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-slate-300 flex items-center gap-1 font-medium">
+                            <Battery className="w-3 h-3 text-emerald-400" />
+                            <span>{msg.locationData.batteryLevel}% Battery</span>
+                          </span>
+                        )}
+                        <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-slate-400 flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-slate-400" />
+                          <span>{msg.locationData.capturedAt}</span>
+                        </span>
+                      </div>
+
+                      {/* Action buttons: Jump to Map or Open Google Maps */}
+                      <div className="flex items-center gap-2 pt-1 border-t border-slate-800/80">
+                        {onNavigateToMap && (
+                          <button
+                            onClick={() => onNavigateToMap(msg.senderId)}
+                            className="flex-1 py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+                          >
+                            <Compass className="w-3.5 h-3.5" />
+                            <span>View on Live Duty Map</span>
+                          </button>
+                        )}
+                        <a
+                          href={`https://www.google.com/maps?q=${msg.locationData.lat},${msg.locationData.lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs flex items-center justify-center gap-1 transition-colors border border-slate-700"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span>Google Maps</span>
+                        </a>
+                      </div>
+                    </div>
+                  ) : isLocationRequest ? (
+                    // Location Request Directive Card
+                    <div className="p-3.5 rounded-2xl max-w-[85%] text-xs leading-relaxed bg-gradient-to-r from-amber-950/90 via-slate-900 to-slate-900 border border-amber-500/40 text-amber-100 rounded-bl-xs space-y-1.5 shadow-md">
+                      <div className="flex items-center gap-2 text-amber-400 font-bold text-[11px] uppercase tracking-wider">
+                        <Radio className="w-3.5 h-3.5 text-amber-400 animate-ping" />
+                        <span>Official Directive: Live GPS Telemetry Request</span>
+                      </div>
+                      <p className="text-white font-medium">{msg.content}</p>
+                    </div>
+                  ) : (
+                    // Standard Message Bubble
+                    <div
+                      className={`p-3 rounded-2xl max-w-[80%] text-xs leading-relaxed ${
+                        isMine
+                          ? 'bg-blue-600 text-white rounded-br-xs'
+                          : isAnnouncement
+                          ? 'bg-amber-950/80 border border-amber-800 text-amber-200 rounded-bl-xs'
+                          : 'bg-slate-800 border border-slate-700 text-slate-200 rounded-bl-xs'
+                      }`}
+                    >
+                      {msg.content}
+                    </div>
+                  )}
                 </div>
               );
             })
@@ -300,7 +440,7 @@ export const LiveChatDispatchView: React.FC<LiveChatDispatchViewProps> = ({ comp
             type="text"
             placeholder={
               selectedRecipientId === 'all_team'
-                ? "Broadcast official announcement to all field agents..."
+                ? "Broadcast official announcement or ask team to send live location..."
                 : `Type direct message to ${selectedEmployee?.fullName || 'employee'}...`
             }
             value={inputText}
@@ -320,3 +460,4 @@ export const LiveChatDispatchView: React.FC<LiveChatDispatchViewProps> = ({ comp
     </div>
   );
 };
+

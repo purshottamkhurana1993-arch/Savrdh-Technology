@@ -54,6 +54,24 @@ export interface User {
   createdAt: string;
 }
 
+export interface ShiftPolicyConfig {
+  shiftName: string;
+  shiftStartTime: string; // e.g. "09:00"
+  shiftEndTime: string;   // e.g. "18:00"
+  minWorkHoursRequired: number; // e.g. 8.0
+  maxAllowedBreakMinutes: number; // e.g. 45
+  maxAllowedBreaksCount: number; // e.g. 2
+  restrictEarlyPunchOut: boolean; // if true, punch out before minWorkHours requires early exit reason & logs admin alert
+  requireGeofenceForPunch: boolean; // require verified GPS coords
+  requireEarlyExitReason: boolean;
+  performanceWeights: {
+    taskCompletionWeight: number; // e.g. 40%
+    shiftAdherenceWeight: number; // e.g. 25%
+    breakDisciplineWeight: number; // e.g. 20%
+    gpsAccuracyWeight: number;    // e.g. 15%
+  };
+}
+
 export interface DutySession {
   id: string;
   tenantId: string;
@@ -77,11 +95,14 @@ export interface DutySession {
   status: 'active' | 'completed' | 'on_break';
   totalDutyMinutes: number;
   totalBreakMinutes: number;
+  earlyExitReason?: string;
+  isEarlyExit?: boolean;
   breaks: {
     id: string;
     startTime: string;
     endTime?: string;
     reason: string;
+    durationMinutes?: number;
   }[];
   currentLocation?: {
     lat: number;
@@ -145,6 +166,13 @@ export interface FieldTask {
   priority: 'low' | 'medium' | 'high' | 'urgent';
   dueDate: string;
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  // En-Route Live Tracking fields
+  tripStartedAt?: string;
+  initialTripDistanceMeters?: number;
+  lastKnownDistanceMeters?: number;
+  lastKnownEtaMinutes?: number;
+  lastHeadingStatus?: 'approaching' | 'stationary' | 'diverging' | 'arrived';
+  // Check-in and Completion verification
   checkInTime?: string;
   checkInLat?: number;
   checkInLng?: number;
@@ -210,7 +238,16 @@ export interface InAppMessage {
   content: string;
   timestamp: string;
   isRead: boolean;
-  type: 'announcement' | 'direct' | 'task_alert' | 'system';
+  type: 'announcement' | 'direct' | 'task_alert' | 'system' | 'location_request' | 'location_share';
+  locationData?: {
+    lat: number;
+    lng: number;
+    address: string;
+    accuracyMeters?: number;
+    batteryLevel?: number;
+    capturedAt: string;
+    speedKmph?: number;
+  };
 }
 
 export interface LeaveRequest {
@@ -230,33 +267,48 @@ export interface LeaveRequest {
 }
 
 export interface PerformanceWeightConfig {
-  attendanceWeight: number; // e.g. 30%
-  workingHoursWeight: number; // e.g. 25%
-  taskCompletionWeight: number; // e.g. 25%
-  visitCompletionWeight: number; // e.g. 15%
-  managerFeedbackWeight: number; // e.g. 5%
+  taskCompletionWeight: number; // e.g. 40%
+  shiftAdherenceWeight: number; // e.g. 25%
+  breakDisciplineWeight: number; // e.g. 20%
+  gpsAccuracyWeight: number; // e.g. 15%
+  attendanceWeight?: number;
+  workingHoursWeight?: number;
+  visitCompletionWeight?: number;
+  managerFeedbackWeight?: number;
 }
 
 export interface EmployeePerformanceScore {
+  tenantId?: string;
   userId: string;
   employeeName: string;
   department: string;
   overallScore: number; // 0 - 100
   attendanceScore: number; // 0 - 100
-  workingHoursScore: number;
-  taskCompletionScore: number;
-  visitScore: number;
+  workingHoursScore: number; // 0 - 100
+  taskCompletionScore: number; // 0 - 100 (Based on Admin assigned tasks & verified GPS proof)
+  breakDisciplineScore: number; // 0 - 100 (Based on break limits vs excessive breaks)
+  shiftAdherenceScore: number; // 0 - 100 (Punch-in on time, punch-out after shift working hours)
+  gpsAccuracyScore: number; // 0 - 100 (Geofence verified visits, continuous live tracking)
+  visitScore?: number;
   managerRating: number; // 1 - 5
   calculatedAt: string;
   trend: 'up' | 'down' | 'stable';
+  statusBadge: 'Elite Performer' | 'Good Standing' | 'Needs Attention' | 'Critical Flag';
   breakdown: {
     totalWorkDays: number;
     daysPresent: number;
     tasksAssigned: number;
     tasksCompleted: number;
+    tasksGeofenceVerified: number;
     visitsScheduled: number;
     visitsCompleted: number;
     overtimeHours: number;
+    breakMinutesTaken: number;
+    breakMinutesAllowed: number;
+    excessiveBreakPenalty: number;
+    workingHoursActual: number;
+    workingHoursRequired: number;
+    earlyExitsCount: number;
   };
 }
 

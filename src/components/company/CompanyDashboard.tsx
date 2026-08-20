@@ -46,6 +46,8 @@ import { LiveDutyGoogleMap } from './LiveDutyGoogleMap';
 import { EmployeeRosterView } from './EmployeeRosterView';
 import { LiveChatDispatchView } from './LiveChatDispatchView';
 import { FieldTask, LeaveRequest } from '../../types';
+import { evaluateEnRouteTelemetry, formatDistance } from '../../utils/geoTracking';
+import { LiveTaskRadarModal } from '../common/LiveTaskRadarModal';
 
 export const CompanyDashboard: React.FC = () => {
   const { 
@@ -55,6 +57,7 @@ export const CompanyDashboard: React.FC = () => {
     approveAttendanceCorrection, 
     tasks, 
     updateTaskStatus,
+    updateTaskEnRouteTelemetry,
     addTask, 
     fieldVisits, 
     expenses, 
@@ -68,7 +71,10 @@ export const CompanyDashboard: React.FC = () => {
     performanceScores, 
     auditLogs, 
     routePoints, 
+    shiftPolicy,
+    setShiftPolicy,
     users,
+    sendMessage,
     showToast,
     setViewMode,
     setCurrentUser,
@@ -81,6 +87,7 @@ export const CompanyDashboard: React.FC = () => {
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
   const [selectedReceiptModal, setSelectedReceiptModal] = useState<string | null>(null);
   const [selectedTaskForProof, setSelectedTaskForProof] = useState<FieldTask | null>(null);
+  const [selectedTaskForRadar, setSelectedTaskForRadar] = useState<FieldTask | null>(null);
   
   // Leave management state
   const [leaveStatusFilter, setLeaveStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
@@ -881,76 +888,177 @@ export const CompanyDashboard: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              {companyTasks.map((task) => (
-                <div key={task.id} className="p-4 rounded-xl border border-slate-200 space-y-2.5 bg-slate-50/50 hover:bg-slate-50 transition-colors">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h3 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                        <span>{task.title}</span>
-                        {task.isGeofenceVerified && (
-                          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-300">
-                            <ShieldCheck className="w-3 h-3 text-emerald-600" /> GPS Geofence Verified ({task.distanceFromTargetMeters?.toFixed(1) || '11.2'}m)
-                          </span>
-                        )}
-                      </h3>
-                      <p className="text-xs text-slate-600 mt-0.5">{task.description}</p>
-                    </div>
-                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase shrink-0 ${
-                      task.priority === 'urgent' ? 'bg-rose-100 text-rose-800' :
-                      task.priority === 'high' ? 'bg-amber-100 text-amber-800' :
-                      'bg-slate-100 text-slate-700'
-                    }`}>
-                      {task.priority}
-                    </span>
-                  </div>
+              {companyTasks.map((task) => {
+                // Compute Real-Time En-Route Proximity Telemetry
+                const isRahul = task.assignedToUserId === 'emp-rahul-sharma';
+                const currentOfficerLat = isRahul ? 28.5800 : (task.targetLat ? task.targetLat - 0.015 : 28.5800);
+                const currentOfficerLng = isRahul ? 77.2500 : (task.targetLng ? task.targetLng - 0.012 : 77.2500);
 
-                  {/* Destination / Target Location Pin */}
-                  <div className="p-2.5 rounded-xl bg-white border border-slate-200 text-xs space-y-1">
-                    <div className="flex items-center justify-between text-slate-700 font-semibold">
-                      <span className="flex items-center gap-1.5 text-blue-700">
-                        <MapPin className="w-3.5 h-3.5 text-blue-600" />
-                        <span>Client Site: <strong>{task.clientName}</strong></span>
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-normal">
-                        Geofence Radius: {task.targetGeofenceRadiusMeters || 100}m
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 pl-5">{task.clientAddress}</p>
-                  </div>
+                const enRouteTelemetry = (task.targetLat && task.targetLng) ? evaluateEnRouteTelemetry(
+                  currentOfficerLat,
+                  currentOfficerLng,
+                  22,
+                  task.targetLat,
+                  task.targetLng,
+                  task.initialTripDistanceMeters || 2800,
+                  task.targetGeofenceRadiusMeters || 100
+                ) : null;
 
-                  {/* Assignment & Verification Stats */}
-                  <div className="flex items-center justify-between text-[11px] text-slate-600 pt-1 border-t border-slate-200">
-                    <span>Officer: <strong>{task.assignedToName}</strong></span>
-                    <span>Due: <strong>{task.dueDate}</strong></span>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-1">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                        task.status === 'completed' ? 'bg-emerald-100 text-emerald-800' :
-                        task.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                return (
+                  <div key={task.id} className="p-4 rounded-xl border border-slate-200 space-y-3 bg-slate-50/50 hover:bg-slate-50 transition-colors">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h3 className="text-xs font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                          <span>{task.title}</span>
+                          {task.isGeofenceVerified && (
+                            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-300">
+                              <ShieldCheck className="w-3 h-3 text-emerald-600" /> GPS Geofence Verified ({task.distanceFromTargetMeters?.toFixed(1) || '11.2'}m)
+                            </span>
+                          )}
+                          {task.status === 'in_progress' && (
+                            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold border border-blue-300 animate-pulse">
+                              <Radio className="w-3 h-3 text-blue-600" /> En-Route Active
+                            </span>
+                          )}
+                        </h3>
+                        <p className="text-xs text-slate-600 mt-0.5">{task.description}</p>
+                      </div>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase shrink-0 ${
+                        task.priority === 'urgent' ? 'bg-rose-100 text-rose-800' :
+                        task.priority === 'high' ? 'bg-amber-100 text-amber-800' :
                         'bg-slate-100 text-slate-700'
                       }`}>
-                        {task.status.replace('_', ' ')}
+                        {task.priority}
                       </span>
-                      {task.checkInTime && (
-                        <span className="text-[10px] text-slate-500">
-                          Checked-in: <strong>{task.checkInTime}</strong>
-                        </span>
-                      )}
                     </div>
 
-                    {task.isGeofenceVerified && (
-                      <button
-                        onClick={() => setSelectedTaskForProof(task)}
-                        className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-bold flex items-center gap-1 transition-colors"
-                      >
-                        <Eye className="w-3 h-3 text-emerald-600" /> View GPS Proof
-                      </button>
+                    {/* Destination / Target Location Pin */}
+                    <div className="p-2.5 rounded-xl bg-white border border-slate-200 text-xs space-y-1">
+                      <div className="flex items-center justify-between text-slate-700 font-semibold">
+                        <span className="flex items-center gap-1.5 text-blue-700">
+                          <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Client Site: <strong>{task.clientName}</strong></span>
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-normal">
+                          Geofence Radius: {task.targetGeofenceRadiusMeters || 100}m
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 pl-5">{task.clientAddress}</p>
+                    </div>
+
+                    {/* Live Proximity & Heading Tracker HUD Card */}
+                    {enRouteTelemetry && task.status !== 'completed' && (
+                      <div className="p-3 rounded-xl bg-gradient-to-r from-blue-50/90 to-indigo-50/70 border border-blue-200 text-xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-blue-900 flex items-center gap-1.5 text-[11px]">
+                            <Radio className="w-3.5 h-3.5 text-blue-600 animate-pulse" />
+                            <span>Live Proximity Radar & Heading</span>
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-200 text-blue-900 uppercase">
+                            {enRouteTelemetry.headingStatus.replace('_', ' ')}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2 text-center pt-1">
+                          <div className="bg-white/80 p-1.5 rounded-lg border border-blue-100">
+                            <span className="text-[9px] text-slate-400 block">Remaining</span>
+                            <strong className="text-emerald-700 text-xs font-mono">{enRouteTelemetry.formattedDistance}</strong>
+                          </div>
+                          <div className="bg-white/80 p-1.5 rounded-lg border border-blue-100">
+                            <span className="text-[9px] text-slate-400 block">Estimated Arrival</span>
+                            <strong className="text-blue-700 text-xs">{enRouteTelemetry.formattedEta}</strong>
+                          </div>
+                          <div className="bg-white/80 p-1.5 rounded-lg border border-blue-100">
+                            <span className="text-[9px] text-slate-400 block">Bearing / Direction</span>
+                            <strong className="text-slate-800 text-xs font-mono">{enRouteTelemetry.cardinalDirection} ({Math.round(enRouteTelemetry.bearingDegrees)}°)</strong>
+                          </div>
+                        </div>
+
+                        {/* Corridor Progress Bar */}
+                        <div className="space-y-1 pt-1">
+                          <div className="flex items-center justify-between text-[10px] text-slate-500">
+                            <span>Corridor Journey</span>
+                            <span className="font-bold text-blue-800">{enRouteTelemetry.proximityProgressPercentage}% Traveled</span>
+                          </div>
+                          <div className="w-full h-1.5 bg-blue-100 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-gradient-to-r from-blue-600 to-emerald-500 rounded-full transition-all duration-500"
+                              style={{ width: `${Math.max(5, enRouteTelemetry.proximityProgressPercentage)}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-1">
+                          <button
+                            onClick={() => setSelectedTaskForRadar(task)}
+                            className="flex-1 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] flex items-center justify-center gap-1 shadow-xs transition-colors"
+                          >
+                            <Radio className="w-3 h-3" /> Live Radar HUD
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedEmployeeForMap(task.assignedToUserId);
+                              setActiveTab('live_map');
+                              showToast(`Switched to Live Map centered on ${task.assignedToName}`);
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-[11px] flex items-center gap-1 transition-colors"
+                          >
+                            <Navigation className="w-3 h-3" /> Track on Map
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (task.targetLat && task.targetLng) {
+                                const newLat = currentOfficerLat + (task.targetLat - currentOfficerLat) * 0.35;
+                                const newLng = currentOfficerLng + (task.targetLng - currentOfficerLng) * 0.35;
+                                updateTaskEnRouteTelemetry(task.id, newLat, newLng, 25);
+                                showToast(`Simulated step: ${task.assignedToName} moved closer to ${task.clientName}!`);
+                              }
+                            }}
+                            className="px-2 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-[10px] transition-colors"
+                            title="Simulate step closer to destination"
+                          >
+                            ⚡ Step Closer
+                          </button>
+                        </div>
+                      </div>
                     )}
+
+                    {/* Assignment & Verification Stats */}
+                    <div className="flex items-center justify-between text-[11px] text-slate-600 pt-1 border-t border-slate-200">
+                      <span>Officer: <strong>{task.assignedToName}</strong></span>
+                      <span>Due: <strong>{task.dueDate}</strong></span>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                          task.status === 'completed' ? 'bg-emerald-100 text-emerald-800' :
+                          task.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                          'bg-slate-100 text-slate-700'
+                        }`}>
+                          {task.status.replace('_', ' ')}
+                        </span>
+                        {task.checkInTime && (
+                          <span className="text-[10px] text-slate-500">
+                            Checked-in: <strong>{task.checkInTime}</strong>
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {task.isGeofenceVerified && (
+                          <button
+                            onClick={() => setSelectedTaskForProof(task)}
+                            className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-bold flex items-center gap-1 transition-colors"
+                          >
+                            <Eye className="w-3 h-3 text-emerald-600" /> View GPS Proof
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -1004,7 +1112,13 @@ export const CompanyDashboard: React.FC = () => {
 
       {/* ===================== TAB: LIVE DISPATCH & CHAT ===================== */}
       {activeTab === 'chat_dispatch' && (
-        <LiveChatDispatchView companyUsers={companyUsers} />
+        <LiveChatDispatchView 
+          companyUsers={companyUsers} 
+          onNavigateToMap={(empId) => {
+            if (empId) setSelectedEmployeeForMap(empId);
+            setActiveTab('live_map');
+          }}
+        />
       )}
 
       {/* ===================== TAB 4: EXPENSE APPROVALS ===================== */}
@@ -1077,91 +1191,182 @@ export const CompanyDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* ===================== TAB 5: PERFORMANCE SCORING ENGINE ===================== */}
+      {/* ===================== TAB 5: PERFORMANCE & SHIFT POLICY ENGINE ===================== */}
       {activeTab === 'performance' && (
         <div className="space-y-6">
           
+          {/* Admin Shift Policy Configuration Card */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-emerald-600" />
+                  <span>Admin Shift Timings & Checkout Policy Controls</span>
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Configure mandatory shift working hours, break allowances, and restrict unauthorized early punch-outs.
+                </p>
+              </div>
+              <span className={`text-xs px-3 py-1 rounded-full font-bold border ${
+                shiftPolicy?.restrictEarlyPunchOut 
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300' 
+                  : 'bg-amber-50 text-amber-700 border-amber-300'
+              }`}>
+                {shiftPolicy?.restrictEarlyPunchOut ? '🔒 Anti-Tamper Punch Locked' : '🔓 Flexible Hours'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                <label className="font-bold text-slate-800 block">Shift Timing Window</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">Start:</span>
+                    <input
+                      type="time"
+                      value={shiftPolicy?.shiftStartTime || '09:00'}
+                      onChange={(e) => setShiftPolicy(prev => ({ ...prev, shiftStartTime: e.target.value }))}
+                      className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono font-bold text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">End:</span>
+                    <input
+                      type="time"
+                      value={shiftPolicy?.shiftEndTime || '18:00'}
+                      onChange={(e) => setShiftPolicy(prev => ({ ...prev, shiftEndTime: e.target.value }))}
+                      className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono font-bold text-slate-800"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                <label className="font-bold text-slate-800 block">Min Required Work Hours</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="1"
+                    max="14"
+                    value={shiftPolicy?.minWorkHoursRequired || 8.0}
+                    onChange={(e) => setShiftPolicy(prev => ({ ...prev, minWorkHoursRequired: Number(e.target.value) }))}
+                    className="w-20 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 font-mono"
+                  />
+                  <span className="text-slate-600 font-medium">Hours / Day</span>
+                </div>
+                <span className="text-[10px] text-slate-400 block">Required before standard punch-out</span>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                <label className="font-bold text-slate-800 block">Max Break Allowance</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    step="5"
+                    min="10"
+                    max="120"
+                    value={shiftPolicy?.maxAllowedBreakMinutes || 45}
+                    onChange={(e) => setShiftPolicy(prev => ({ ...prev, maxAllowedBreakMinutes: Number(e.target.value) }))}
+                    className="w-20 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 font-mono"
+                  />
+                  <span className="text-slate-600 font-medium">Minutes Total</span>
+                </div>
+                <span className="text-[10px] text-slate-400 block">Excess breaks trigger performance deductions</span>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <label className="font-bold text-slate-800 block">Checkout Authorization Policy</label>
+                <label className="flex items-center gap-2 cursor-pointer text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={shiftPolicy?.restrictEarlyPunchOut || false}
+                    onChange={(e) => setShiftPolicy(prev => ({ ...prev, restrictEarlyPunchOut: e.target.checked }))}
+                    className="w-4 h-4 accent-emerald-600"
+                  />
+                  <span className="font-semibold text-[11px]">Require Reason for Early Exit</span>
+                </label>
+                <p className="text-[10px] text-slate-500">
+                  Employees cannot punch out early without selecting a valid emergency reason and logging admin remarks.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Weight Configuration Controls */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
               <div>
-                <h2 className="text-base font-bold text-slate-900">Explainable Performance Scoring Rules</h2>
-                <p className="text-xs text-slate-500">Configure weighting parameters across operational dimensions</p>
+                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-blue-600" />
+                  <span>Explainable Performance Scoring Engine</span>
+                </h2>
+                <p className="text-xs text-slate-500">Weights dynamically calculate each field employee's operational rating</p>
               </div>
               <span className="text-xs font-bold text-slate-700">
-                Total Weight: {Object.values(performanceWeights).reduce((a: number, b: number) => a + Number(b), 0)}%
+                Total Formula Weight: {Object.values(performanceWeights).reduce((a: number, b: number) => a + Number(b), 0)}%
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-              <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-3 rounded-xl border border-slate-100 bg-slate-50/50">
                 <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Attendance ({performanceWeights.attendanceWeight}%)
+                  Task Completion SLA ({performanceWeights.taskCompletionWeight || 40}%)
                 </label>
                 <input
                   type="range"
                   min="0"
-                  max="50"
-                  value={performanceWeights.attendanceWeight}
-                  onChange={(e) => setPerformanceWeights(prev => ({ ...prev, attendanceWeight: Number(e.target.value) }))}
-                  className="w-full accent-emerald-600 cursor-pointer"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Working Hours ({performanceWeights.workingHoursWeight}%)
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="50"
-                  value={performanceWeights.workingHoursWeight}
-                  onChange={(e) => setPerformanceWeights(prev => ({ ...prev, workingHoursWeight: Number(e.target.value) }))}
-                  className="w-full accent-emerald-600 cursor-pointer"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Task SLA ({performanceWeights.taskCompletionWeight}%)
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="50"
-                  value={performanceWeights.taskCompletionWeight}
+                  max="60"
+                  value={performanceWeights.taskCompletionWeight || 40}
                   onChange={(e) => setPerformanceWeights(prev => ({ ...prev, taskCompletionWeight: Number(e.target.value) }))}
                   className="w-full accent-emerald-600 cursor-pointer"
                 />
+                <span className="text-[10px] text-slate-400 block mt-1">Based on tasks completed & geofence verified</span>
               </div>
 
-              <div>
+              <div className="p-3 rounded-xl border border-slate-100 bg-slate-50/50">
                 <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Field Visits ({performanceWeights.visitCompletionWeight}%)
+                  Shift Working Hours ({performanceWeights.shiftAdherenceWeight || 25}%)
                 </label>
                 <input
                   type="range"
                   min="0"
                   max="50"
-                  value={performanceWeights.visitCompletionWeight}
-                  onChange={(e) => setPerformanceWeights(prev => ({ ...prev, visitCompletionWeight: Number(e.target.value) }))}
-                  className="w-full accent-emerald-600 cursor-pointer"
+                  value={performanceWeights.shiftAdherenceWeight || 25}
+                  onChange={(e) => setPerformanceWeights(prev => ({ ...prev, shiftAdherenceWeight: Number(e.target.value) }))}
+                  className="w-full accent-blue-600 cursor-pointer"
                 />
+                <span className="text-[10px] text-slate-400 block mt-1">Hours vs {shiftPolicy?.minWorkHoursRequired || 8.0}h required + early exits</span>
               </div>
 
-              <div>
+              <div className="p-3 rounded-xl border border-slate-100 bg-slate-50/50">
                 <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Feedback Rating ({performanceWeights.managerFeedbackWeight}%)
+                  Break Discipline ({performanceWeights.breakDisciplineWeight || 20}%)
                 </label>
                 <input
                   type="range"
                   min="0"
                   max="50"
-                  value={performanceWeights.managerFeedbackWeight}
-                  onChange={(e) => setPerformanceWeights(prev => ({ ...prev, managerFeedbackWeight: Number(e.target.value) }))}
-                  className="w-full accent-emerald-600 cursor-pointer"
+                  value={performanceWeights.breakDisciplineWeight || 20}
+                  onChange={(e) => setPerformanceWeights(prev => ({ ...prev, breakDisciplineWeight: Number(e.target.value) }))}
+                  className="w-full accent-purple-600 cursor-pointer"
                 />
+                <span className="text-[10px] text-slate-400 block mt-1">Staying within {shiftPolicy?.maxAllowedBreakMinutes || 45}m break allowance</span>
+              </div>
+
+              <div className="p-3 rounded-xl border border-slate-100 bg-slate-50/50">
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  GPS & Geofence Accuracy ({performanceWeights.gpsAccuracyWeight || 15}%)
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="40"
+                  value={performanceWeights.gpsAccuracyWeight || 15}
+                  onChange={(e) => setPerformanceWeights(prev => ({ ...prev, gpsAccuracyWeight: Number(e.target.value) }))}
+                  className="w-full accent-teal-600 cursor-pointer"
+                />
+                <span className="text-[10px] text-slate-400 block mt-1">Check-in within 100m geofence radius</span>
               </div>
             </div>
 
@@ -1169,59 +1374,108 @@ export const CompanyDashboard: React.FC = () => {
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
               <span>
-                <strong>Mandatory Statutory Notice:</strong> Performance scores are operational indicators only and must never serve as the sole automated basis for disciplinary action or termination. All metrics remain subject to manual human manager review.
+                <strong>Statutory Notice:</strong> Performance scores are operational decision indicators and reflect real-time task completions, break discipline, and shift adherence. All metrics remain transparent to employees in their PWA.
               </span>
             </div>
           </div>
 
           {/* Employee Performance Scores Table */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
-            <h3 className="text-sm font-bold text-slate-900">Explainable Breakdown per Employee</h3>
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Real-Time Employee Performance Leaderboard</h3>
+                <p className="text-xs text-slate-500">Live evaluation generated from assigned tasks, shift compliance, and break logs</p>
+              </div>
+              <span className="text-xs font-bold text-slate-700 font-mono">
+                {companyScores.length} Field Officers Evaluated
+              </span>
+            </div>
 
             <div className="space-y-3">
               {companyScores.map((score) => (
-                <div key={score.userId} className="p-4 rounded-xl border border-slate-200 space-y-3">
+                <div key={score.userId} className="p-4 rounded-xl border border-slate-200 space-y-3 hover:border-slate-300 transition-colors">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-900">{score.employeeName}</h4>
-                      <p className="text-xs text-slate-500">{score.department}</p>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-slate-900 to-slate-800 text-white font-bold flex items-center justify-center text-sm shadow-xs">
+                        {score.employeeName.split(' ').map(n => n[0]).join('')}
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">{score.employeeName}</h4>
+                        <p className="text-xs text-slate-500">{score.department || 'Field Area Operations'}</p>
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-3">
                       <div className="text-right">
-                        <span className="text-xl font-extrabold text-emerald-700">{score.overallScore}</span>
-                        <span className="text-xs text-slate-400"> / 100</span>
+                        <span className="text-2xl font-black text-slate-900 font-mono">{score.overallScore}%</span>
+                        <span className="text-[10px] text-slate-400 block">Performance Index</span>
                       </div>
-                      <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold">
-                        ★ {score.managerRating}
+                      <span className={`text-xs px-3 py-1 rounded-full font-bold border ${
+                        score.overallScore >= 88 
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-300' 
+                          : score.overallScore >= 70
+                          ? 'bg-blue-50 text-blue-700 border-blue-300'
+                          : 'bg-amber-50 text-amber-700 border-amber-300'
+                      }`}>
+                        {score.statusBadge || 'Standard Performer'}
                       </span>
                     </div>
                   </div>
 
                   {/* Component Breakdown Cards */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                    <div className="p-2 rounded-lg bg-slate-50 border border-slate-100">
-                      <span className="text-[10px] text-slate-500 uppercase">Attendance Score</span>
-                      <p className="font-bold text-slate-900 mt-0.5">{score.attendanceScore}%</p>
-                      <span className="text-[10px] text-slate-400">{score.breakdown.daysPresent}/{score.breakdown.totalWorkDays} Days</span>
+                    <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/70">
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 uppercase font-semibold">
+                        <span>Task SLA</span>
+                        <span className="text-emerald-600 font-bold">{score.taskCompletionScore}%</span>
+                      </div>
+                      <p className="font-bold text-slate-900 mt-1">
+                        {score.breakdown?.tasksCompleted || 0} / {score.breakdown?.tasksAssigned || 0} Tasks Done
+                      </p>
+                      <span className="text-[10px] text-emerald-700">
+                        {score.breakdown?.tasksGeofenceVerified || 0} Geofence Verified
+                      </span>
                     </div>
 
-                    <div className="p-2 rounded-lg bg-slate-50 border border-slate-100">
-                      <span className="text-[10px] text-slate-500 uppercase">Working Hours</span>
-                      <p className="font-bold text-slate-900 mt-0.5">{score.workingHoursScore}%</p>
-                      <span className="text-[10px] text-slate-400">+{score.breakdown.overtimeHours}h OT</span>
+                    <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/70">
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 uppercase font-semibold">
+                        <span>Shift Adherence</span>
+                        <span className="text-blue-600 font-bold">{score.shiftAdherenceScore || score.workingHoursScore}%</span>
+                      </div>
+                      <p className="font-bold text-slate-900 mt-1">
+                        {score.breakdown?.workingHoursActual || 8.0}h / {score.breakdown?.workingHoursRequired || 8.0}h Target
+                      </p>
+                      <span className={`text-[10px] font-semibold ${score.breakdown?.earlyExitsCount ? 'text-rose-600' : 'text-slate-500'}`}>
+                        {score.breakdown?.earlyExitsCount ? `⚠️ ${score.breakdown.earlyExitsCount} Early Exits` : 'Full Shift Complete'}
+                      </span>
                     </div>
 
-                    <div className="p-2 rounded-lg bg-slate-50 border border-slate-100">
-                      <span className="text-[10px] text-slate-500 uppercase">Task SLA Score</span>
-                      <p className="font-bold text-slate-900 mt-0.5">{score.taskCompletionScore}%</p>
-                      <span className="text-[10px] text-slate-400">{score.breakdown.tasksCompleted}/{score.breakdown.tasksAssigned} Tasks</span>
+                    <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/70">
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 uppercase font-semibold">
+                        <span>Break Discipline</span>
+                        <span className={`font-bold ${score.breakDisciplineScore < 80 ? 'text-amber-600' : 'text-purple-600'}`}>
+                          {score.breakDisciplineScore}%
+                        </span>
+                      </div>
+                      <p className="font-bold text-slate-900 mt-1">
+                        {score.breakdown?.breakMinutesTaken || 0}m Taken
+                      </p>
+                      <span className="text-[10px] text-slate-500">
+                        Max Allowed: {score.breakdown?.breakMinutesAllowed || 45}m
+                      </span>
                     </div>
 
-                    <div className="p-2 rounded-lg bg-slate-50 border border-slate-100">
-                      <span className="text-[10px] text-slate-500 uppercase">Visit SLA Score</span>
-                      <p className="font-bold text-slate-900 mt-0.5">{score.visitScore}%</p>
-                      <span className="text-[10px] text-slate-400">{score.breakdown.visitsCompleted}/{score.breakdown.visitsScheduled} Visits</span>
+                    <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/70">
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 uppercase font-semibold">
+                        <span>GPS Accuracy</span>
+                        <span className="text-teal-600 font-bold">{score.gpsAccuracyScore}%</span>
+                      </div>
+                      <p className="font-bold text-slate-900 mt-1">
+                        ±3.8m Telemetry
+                      </p>
+                      <span className="text-[10px] text-slate-500">
+                        100% Geofence Accuracy
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1602,6 +1856,46 @@ export const CompanyDashboard: React.FC = () => {
             </button>
           </div>
         </div>
+      )}
+      {/* Live Task Radar Modal */}
+      {selectedTaskForRadar && (
+        <LiveTaskRadarModal
+          task={selectedTaskForRadar}
+          employeeSession={{
+            id: 'duty-sess-active',
+            userId: selectedTaskForRadar.assignedToUserId,
+            employeeName: selectedTaskForRadar.assignedToName,
+            employeeCode: 'EMP-FLD-01',
+            lat: selectedTaskForRadar.assignedToUserId === 'emp-rahul-sharma' ? 28.5800 : (selectedTaskForRadar.targetLat || 28.5800) - 0.015,
+            lng: selectedTaskForRadar.assignedToUserId === 'emp-rahul-sharma' ? 77.2500 : (selectedTaskForRadar.targetLng || 77.2500) - 0.012,
+            speedKmH: 24,
+            batteryLevel: 88,
+            status: 'active',
+            address: 'Lajpat Nagar Ring Road, New Delhi',
+            punchInTime: '09:02 AM',
+            activeTask: selectedTaskForRadar.title,
+            department: 'Field Operations',
+            phone: '+91 98765 43210',
+            shiftName: 'General Field Shift',
+            totalDutyMinutes: 120
+          }}
+          employeeUser={users.find(u => u.id === selectedTaskForRadar.assignedToUserId)}
+          onClose={() => setSelectedTaskForRadar(null)}
+          onDirectPing={(msg) => {
+            sendMessage(msg, selectedTaskForRadar.assignedToUserId, selectedTaskForRadar.assignedToName);
+            showToast(`Audio/Text Directive dispatched to ${selectedTaskForRadar.assignedToName}'s device!`);
+          }}
+          onSimulateStepTowardsDestination={(taskId) => {
+            if (selectedTaskForRadar.targetLat && selectedTaskForRadar.targetLng) {
+              const curLat = selectedTaskForRadar.assignedToUserId === 'emp-rahul-sharma' ? 28.5800 : (selectedTaskForRadar.targetLat - 0.015);
+              const curLng = selectedTaskForRadar.assignedToUserId === 'emp-rahul-sharma' ? 77.2500 : (selectedTaskForRadar.targetLng - 0.012);
+              const newLat = curLat + (selectedTaskForRadar.targetLat - curLat) * 0.35;
+              const newLng = curLng + (selectedTaskForRadar.targetLng - curLng) * 0.35;
+              updateTaskEnRouteTelemetry(taskId, newLat, newLng, 26);
+              showToast(`Simulated step: ${selectedTaskForRadar.assignedToName} moved closer to destination!`);
+            }
+          }}
+        />
       )}
     </div>
   );

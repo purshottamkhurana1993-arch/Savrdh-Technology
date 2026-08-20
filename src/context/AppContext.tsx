@@ -15,7 +15,8 @@ import {
   SupportTicket, 
   AuditLog, 
   ConsentRecord,
-  RoutePoint
+  RoutePoint,
+  ShiftPolicyConfig
 } from '../types';
 import { 
   mockTenants, 
@@ -28,6 +29,7 @@ import {
   mockExpenses, 
   mockMessages, 
   mockLeaves, 
+  defaultShiftPolicy,
   defaultPerformanceWeights, 
   mockPerformanceScores, 
   mockInvoices, 
@@ -64,10 +66,14 @@ interface AppContextType {
   removeEmployee: (userId: string) => void;
   updateEmployeeStatus: (userId: string, status: 'active' | 'inactive' | 'suspended') => void;
 
+  // Shift Policy & Working Hours Config
+  shiftPolicy: ShiftPolicyConfig;
+  updateShiftPolicy: (policy: Partial<ShiftPolicyConfig>) => void;
+
   // Employee State & Active Duty
   currentDutySession: DutySession | null;
-  punchIn: (locationName?: string) => void;
-  punchOut: () => void;
+  punchIn: (locationName?: string, coords?: { lat: number; lng: number }) => void;
+  punchOut: (options?: { isEarlyExit?: boolean; earlyExitReason?: string; force?: boolean }) => void;
   startBreak: (reason: string) => void;
   endBreak: () => void;
   consent: ConsentRecord;
@@ -78,6 +84,8 @@ interface AppContextType {
   approveAttendanceCorrection: (recordId: string) => void;
   tasks: FieldTask[];
   updateTaskStatus: (taskId: string, status: FieldTask['status'], notes?: string) => void;
+  startTaskTrip: (taskId: string) => void;
+  updateTaskEnRouteTelemetry: (taskId: string, currentLat: number, currentLng: number, speedKmH: number) => void;
   completeTaskWithGpsProof: (taskId: string, proofData: {
     checkInLat: number;
     checkInLng: number;
@@ -96,7 +104,16 @@ interface AppContextType {
   approveExpense: (expenseId: string, remarks?: string) => void;
   rejectExpense: (expenseId: string, remarks?: string) => void;
   messages: InAppMessage[];
-  sendMessage: (content: string, recipientId: string, recipientName: string) => void;
+  sendMessage: (
+    content: string, 
+    recipientId: string, 
+    recipientName: string,
+    options?: {
+      type?: InAppMessage['type'];
+      locationData?: InAppMessage['locationData'];
+    }
+  ) => void;
+  sendLocationMessage: (recipientId?: string, recipientName?: string, customNote?: string) => void;
   leaves: LeaveRequest[];
   applyLeave: (leave: Omit<LeaveRequest, 'id' | 'tenantId' | 'status' | 'appliedOn'>) => void;
   approveLeave: (leaveId: string, remarks?: string) => void;
@@ -239,6 +256,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Operational State
+  const [shiftPolicy, setShiftPolicy] = useState<ShiftPolicyConfig>(() => getStored<ShiftPolicyConfig>('shift_policy', defaultShiftPolicy));
   const [currentDutySession, setCurrentDutySession] = useState<DutySession | null>(() => getStored<DutySession | null>('current_duty_session', mockDutySessions[0] || null));
   const [routePoints, setRoutePoints] = useState<RoutePoint[]>(() => getStored<RoutePoint[]>('route_points', mockRoutePoints));
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(() => getStored<AttendanceRecord[]>('attendance', mockAttendanceRecords));
@@ -247,7 +265,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [expenses, setExpenses] = useState<ExpenseRecord[]>(() => getStored<ExpenseRecord[]>('expenses', mockExpenses));
   const [messages, setMessages] = useState<InAppMessage[]>(() => getStored<InAppMessage[]>('messages', mockMessages));
   const [leaves, setLeaves] = useState<LeaveRequest[]>(() => getStored<LeaveRequest[]>('leaves', mockLeaves));
-  const [performanceWeights, setPerformanceWeights] = useState<PerformanceWeightConfig>(defaultPerformanceWeights);
+  const [performanceWeights, setPerformanceWeights] = useState<PerformanceWeightConfig>(() => getStored<PerformanceWeightConfig>('perf_weights', defaultPerformanceWeights));
   const [performanceScores, setPerformanceScores] = useState<EmployeePerformanceScore[]>(() => getStored<EmployeePerformanceScore[]>('scores', mockPerformanceScores));
   const [invoices, setInvoices] = useState<SaaSInvoice[]>(() => getStored<SaaSInvoice[]>('invoices', mockInvoices));
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>(() => getStored<SupportTicket[]>('tickets', mockSupportTickets));
@@ -255,6 +273,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [consent, setConsent] = useState<ConsentRecord>(() => getStored<ConsentRecord>('consent', mockConsentRecord));
 
   // Sync operational data to LocalStorage
+  useEffect(() => { setStored('shift_policy', shiftPolicy); }, [shiftPolicy]);
+  useEffect(() => { setStored('perf_weights', performanceWeights); }, [performanceWeights]);
   useEffect(() => { setStored('current_duty_session', currentDutySession); }, [currentDutySession]);
   useEffect(() => { setStored('route_points', routePoints); }, [routePoints]);
   useEffect(() => { setStored('attendance', attendanceRecords); }, [attendanceRecords]);
@@ -263,6 +283,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => { setStored('expenses', expenses); }, [expenses]);
   useEffect(() => { setStored('messages', messages); }, [messages]);
   useEffect(() => { setStored('leaves', leaves); }, [leaves]);
+  useEffect(() => { setStored('scores', performanceScores); }, [performanceScores]);
   useEffect(() => { setStored('invoices', invoices); }, [invoices]);
   useEffect(() => { setStored('tickets', supportTickets); }, [supportTickets]);
   useEffect(() => { setStored('audit_logs', auditLogs); }, [auditLogs]);
@@ -293,8 +314,158 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAuditLogs(prev => [newLog, ...prev]);
   };
 
-  // Punch In Handler
-  const punchIn = (locationName?: string) => {
+  // ==========================================
+  // DYNAMIC PERFORMANCE CALCULATION ENGINE
+  // Automatically recalculates scores based on:
+  // 1. Admin Task Assignment & Verified GPS Completion (40%)
+  // 2. Shift Working Hours & Early Exit Discipline (25%)
+  // 3. Break & Idle Time Limits vs Overtime (20%)
+  // 4. GPS Tracking Continuity & Accuracy (15%)
+  // ==========================================
+  const calculateScores = (
+    currentUsersList: User[] = users,
+    currentTaskList: FieldTask[] = tasks,
+    currentAttendanceList: AttendanceRecord[] = attendanceRecords,
+    currentDuty: DutySession | null = currentDutySession,
+    policy: ShiftPolicyConfig = shiftPolicy,
+    weights: PerformanceWeightConfig = performanceWeights
+  ): EmployeePerformanceScore[] => {
+    const empUsers = currentUsersList.filter(u => u.role === 'employee');
+    
+    return empUsers.map(emp => {
+      // 1. Task calculations for this employee
+      const empTasks = currentTaskList.filter(t => t.assignedToUserId === emp.id || (!t.assignedToUserId && t.tenantId === emp.tenantId));
+      const totalTasksAssigned = empTasks.length;
+      const completedTasks = empTasks.filter(t => t.status === 'completed');
+      const totalTasksCompleted = completedTasks.length;
+      const geofenceVerifiedTasks = completedTasks.filter(t => t.isGeofenceVerified).length;
+
+      let taskCompletionScore = 100;
+      if (totalTasksAssigned > 0) {
+        const completionRate = (totalTasksCompleted / totalTasksAssigned) * 100;
+        const geofenceRate = totalTasksCompleted > 0 ? (geofenceVerifiedTasks / totalTasksCompleted) * 100 : 100;
+        taskCompletionScore = Math.round((completionRate * 0.75) + (geofenceRate * 0.25));
+      }
+
+      // 2. Attendance & Shift Working Hours Adherence
+      const empAtt = currentAttendanceList.find(a => a.userId === emp.id || a.employeeCode === emp.employeeCode);
+      const minRequired = policy.minWorkHoursRequired || 8.0;
+      let workingHours = empAtt?.workingHours || 0;
+      const isCurrentlyActive = currentDuty && currentDuty.userId === emp.id && (currentDuty.status === 'active' || currentDuty.status === 'on_break');
+      
+      if (isCurrentlyActive && workingHours < 4) {
+        workingHours = 5.2; // active field duty ongoing
+      }
+
+      let shiftAdherenceScore = 100;
+      const isEarlyExit = empAtt?.notes?.includes('Early Punch-Out') || (currentDuty?.userId === emp.id && currentDuty?.isEarlyExit);
+
+      if (workingHours < minRequired && !isCurrentlyActive) {
+        const ratio = Math.min(1, workingHours / minRequired);
+        shiftAdherenceScore = Math.round(ratio * 100);
+        if (isEarlyExit) {
+          shiftAdherenceScore = Math.max(35, shiftAdherenceScore - 20); // Penalty for unauthorized early checkout
+        }
+      } else if (empAtt?.status === 'late') {
+        shiftAdherenceScore = 80;
+      }
+
+      // 3. Break & Idle Time Discipline Score
+      let breakMinutes = 0;
+      if (currentDuty && currentDuty.userId === emp.id) {
+        breakMinutes = currentDuty.totalBreakMinutes || (currentDuty.breaks.length * 20);
+      } else if (empAtt?.status === 'on_break') {
+        breakMinutes = 30;
+      }
+
+      const maxAllowedBreak = policy.maxAllowedBreakMinutes || 45;
+      let excessivePenalty = 0;
+      let breakDisciplineScore = 100;
+      if (breakMinutes > maxAllowedBreak) {
+        excessivePenalty = (breakMinutes - maxAllowedBreak) * 2;
+        breakDisciplineScore = Math.max(0, 100 - excessivePenalty);
+      }
+
+      // 4. GPS Accuracy & Tracking Score
+      let gpsAccuracyScore = 98;
+      if (totalTasksCompleted > 0 && geofenceVerifiedTasks < totalTasksCompleted) {
+        gpsAccuracyScore = Math.round(75 + (geofenceVerifiedTasks / totalTasksCompleted) * 25);
+      }
+
+      // Weighted Composite Score
+      const tWeight = weights.taskCompletionWeight ?? 40;
+      const sWeight = weights.shiftAdherenceWeight ?? 25;
+      const bWeight = weights.breakDisciplineWeight ?? 20;
+      const gWeight = weights.gpsAccuracyWeight ?? 15;
+      const totalWeightSum = (tWeight + sWeight + bWeight + gWeight) || 100;
+
+      const rawOverall = Math.round(
+        (taskCompletionScore * tWeight +
+         shiftAdherenceScore * sWeight +
+         breakDisciplineScore * bWeight +
+         gpsAccuracyScore * gWeight) / totalWeightSum
+      );
+      const overallScore = Math.min(100, Math.max(0, rawOverall));
+
+      let statusBadge: EmployeePerformanceScore['statusBadge'] = 'Good Standing';
+      if (overallScore >= 88) statusBadge = 'Elite Performer';
+      else if (overallScore >= 70) statusBadge = 'Good Standing';
+      else if (overallScore >= 50) statusBadge = 'Needs Attention';
+      else statusBadge = 'Critical Flag';
+
+      return {
+        tenantId: emp.tenantId,
+        userId: emp.id,
+        employeeName: emp.fullName,
+        department: emp.department || 'Field Operations',
+        overallScore,
+        attendanceScore: shiftAdherenceScore,
+        workingHoursScore: Math.min(100, Math.round((workingHours / minRequired) * 100)),
+        taskCompletionScore,
+        breakDisciplineScore,
+        shiftAdherenceScore,
+        gpsAccuracyScore,
+        managerRating: overallScore >= 90 ? 5 : overallScore >= 75 ? 4 : overallScore >= 60 ? 3 : 2,
+        calculatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        trend: overallScore >= 75 ? 'up' : overallScore >= 55 ? 'stable' : 'down',
+        statusBadge,
+        breakdown: {
+          totalWorkDays: 22,
+          daysPresent: 21,
+          tasksAssigned: totalTasksAssigned,
+          tasksCompleted: totalTasksCompleted,
+          tasksGeofenceVerified: geofenceVerifiedTasks,
+          visitsScheduled: 5,
+          visitsCompleted: 5,
+          overtimeHours: Math.max(0, Number((workingHours - minRequired).toFixed(1))),
+          breakMinutesTaken: breakMinutes,
+          breakMinutesAllowed: maxAllowedBreak,
+          excessiveBreakPenalty: excessivePenalty,
+          workingHoursActual: Number(workingHours.toFixed(1)),
+          workingHoursRequired: minRequired,
+          earlyExitsCount: isEarlyExit ? 1 : 0
+        }
+      };
+    });
+  };
+
+  // Recompute scores on key lifecycle events
+  useEffect(() => {
+    const updated = calculateScores(users, tasks, attendanceRecords, currentDutySession, shiftPolicy, performanceWeights);
+    setPerformanceScores(updated);
+  }, [tasks, attendanceRecords, currentDutySession, shiftPolicy, performanceWeights]);
+
+  const updateShiftPolicy = (newPolicy: Partial<ShiftPolicyConfig>) => {
+    setShiftPolicy(prev => {
+      const updated = { ...prev, ...newPolicy };
+      addAuditLog('UPDATE_SHIFT_POLICY', 'ShiftPolicyConfig', currentTenant.id, `Shift timings: ${updated.shiftStartTime} - ${updated.shiftEndTime}, Min Work: ${updated.minWorkHoursRequired}h, Max Break: ${updated.maxAllowedBreakMinutes}m`);
+      showToast('⚙️ Company Shift Timings & Working Hours Policy updated.');
+      return updated;
+    });
+  };
+
+  // Punch In Handler with GPS verification & Shift details
+  const punchIn = (locationName?: string, coords?: { lat: number; lng: number }) => {
     if (!consent.locationDutyConsent) {
       showToast('⚠️ Privacy Consent Required: Please grant duty-time GPS access in Privacy settings.');
       return;
@@ -302,28 +473,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const lat = coords?.lat || 28.5355 + (Math.random() * 0.002 - 0.001);
+    const lng = coords?.lng || 77.3910 + (Math.random() * 0.002 - 0.001);
+    const address = locationName || 'Sector 18 Field Hub, Noida (GPS Verified)';
+
     const newSession: DutySession = {
       id: `duty-${Date.now()}`,
       tenantId: currentTenant.id,
       userId: currentUser.id,
       employeeName: currentUser.fullName,
-      shiftName: 'General Field Shift (09:00 AM - 06:00 PM)',
+      shiftName: `${shiftPolicy.shiftName} (${shiftPolicy.shiftStartTime} - ${shiftPolicy.shiftEndTime})`,
       date: now.toISOString().slice(0, 10),
       punchInTime: timeStr,
       punchInLocation: {
-        lat: 28.5355,
-        lng: 77.3910,
-        address: locationName || 'Sector 18 Field Hub, Noida (GPS Verified)',
-        accuracyMeters: 4.2
+        lat,
+        lng,
+        address,
+        accuracyMeters: 3.8
       },
       status: 'active',
       totalDutyMinutes: 0,
       totalBreakMinutes: 0,
       breaks: [],
       currentLocation: {
-        lat: 28.5355,
-        lng: 77.3910,
-        address: locationName || 'Sector 18 Field Hub, Noida',
+        lat,
+        lng,
+        address,
         batteryLevel: 94,
         isMockGpsDetected: false,
         lastPingAt: 'Just now'
@@ -335,7 +510,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setOfflineQueueCount(prev => prev + 1);
       showToast('📴 Offline Mode: Punch-In cached locally. Will auto-sync on connectivity.');
     } else {
-      showToast(`✅ Punch-In verified at ${timeStr}. Duty tracking is now active.`);
+      showToast(`✅ Punch-In verified at ${timeStr}. Shift Policy: ${shiftPolicy.shiftStartTime} - ${shiftPolicy.shiftEndTime} (Min ${shiftPolicy.minWorkHoursRequired}h).`);
     }
 
     setCurrentDutySession(newSession);
@@ -344,7 +519,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAttendanceRecords(prev => {
       const existing = prev.find(a => a.userId === currentUser.id);
       if (existing) {
-        return prev.map(a => a.userId === currentUser.id ? { ...a, status: 'on_field', punchInTime: timeStr } : a);
+        return prev.map(a => a.userId === currentUser.id ? { 
+          ...a, 
+          status: 'on_field', 
+          punchInTime: timeStr,
+          shift: `${shiftPolicy.shiftName} (${shiftPolicy.shiftStartTime} - ${shiftPolicy.shiftEndTime})`
+        } : a);
       }
       return [
         {
@@ -355,7 +535,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           employeeCode: currentUser.employeeCode || 'EMP-100',
           department: currentUser.department || 'Field Ops',
           date: now.toISOString().slice(0, 10),
-          shift: 'General Field (09:00 - 18:00)',
+          shift: `${shiftPolicy.shiftName} (${shiftPolicy.shiftStartTime} - ${shiftPolicy.shiftEndTime})`,
           status: 'on_field',
           punchInTime: timeStr,
           workingHours: 0.1,
@@ -367,35 +547,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ];
     });
 
-    addAuditLog('PUNCH_IN_DUTY', 'DutySession', newSession.id, 'Duty session started with employee GPS consent');
+    addAuditLog('PUNCH_IN_DUTY', 'DutySession', newSession.id, `Duty started at ${timeStr} with GPS verified (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
   };
 
-  // Punch Out Handler
-  const punchOut = () => {
+  // Punch Out Handler with Early Exit check & reason logging
+  const punchOut = (options?: { isEarlyExit?: boolean; earlyExitReason?: string; force?: boolean }) => {
     if (!currentDutySession) return;
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const isEarly = options?.isEarlyExit || false;
+    const reason = options?.earlyExitReason || '';
 
-    setCurrentDutySession(prev => prev ? {
-      ...prev,
+    const completedSession: DutySession = {
+      ...currentDutySession,
       status: 'completed',
       punchOutTime: timeStr,
+      isEarlyExit: isEarly,
+      earlyExitReason: reason || undefined,
       punchOutLocation: {
-        lat: prev.currentLocation?.lat || 28.5355,
-        lng: prev.currentLocation?.lng || 77.3910,
-        address: prev.currentLocation?.address || 'Duty Completed Location'
+        lat: currentDutySession.currentLocation?.lat || 28.5355,
+        lng: currentDutySession.currentLocation?.lng || 77.3910,
+        address: currentDutySession.currentLocation?.address || 'Duty Completed Location'
       }
-    } : null);
+    };
+
+    setCurrentDutySession(completedSession);
+
+    const calculatedHours = isEarly ? 4.5 : shiftPolicy.minWorkHoursRequired || 8.0;
 
     setAttendanceRecords(prev => prev.map(a => 
-      a.userId === currentUser.id ? { ...a, status: 'present', punchOutTime: timeStr, workingHours: 8.2 } : a
+      a.userId === currentUser.id ? { 
+        ...a, 
+        status: 'present', 
+        punchOutTime: timeStr, 
+        workingHours: calculatedHours,
+        notes: isEarly ? `Early Punch-Out: ${reason}` : 'Full Shift Completed'
+      } : a
     ));
 
-    addAuditLog('PUNCH_OUT_DUTY', 'DutySession', currentDutySession.id, 'Duty ended. Location tracking automatically stopped.');
-    showToast(`🛑 Duty Ended at ${timeStr}. Location tracking has automatically stopped for privacy.`);
+    if (isEarly) {
+      addAuditLog('EARLY_PUNCH_OUT_DUTY', 'DutySession', currentDutySession.id, `Early exit before shift completion logged by ${currentUser.fullName}. Reason: ${reason}`);
+      showToast(`⚠️ Early Punch-Out Recorded: "${reason}". Flagged for Admin Review.`);
+    } else {
+      addAuditLog('PUNCH_OUT_DUTY', 'DutySession', currentDutySession.id, 'Shift working hours completed. Location tracking stopped.');
+      showToast(`🛑 Duty Completed at ${timeStr}. Full shift logged successfully.`);
+    }
   };
 
-  // Break handlers
+  // Break handlers with duration calculation & excessive break alerts
   const startBreak = (reason: string) => {
     if (!currentDutySession) return;
     const now = new Date();
@@ -405,7 +604,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentDutySession(prev => prev ? {
       ...prev,
       status: 'on_break',
-      breaks: [...prev.breaks, { id: breakId, startTime: timeStr, reason }]
+      breaks: [...prev.breaks, { id: breakId, startTime: timeStr, reason, durationMinutes: 0 }]
     } : null);
 
     setAttendanceRecords(prev => prev.map(a => 
@@ -417,20 +616,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } : a
     ));
 
-    showToast(`⏸️ Break Started: ${reason} at ${timeStr}`);
-    addAuditLog('START_BREAK', 'DutySession', currentDutySession.id, `${currentUser.fullName} went on break: ${reason}`);
+    showToast(`⏸️ Break Started: ${reason} at ${timeStr} (Max Allowed: ${shiftPolicy.maxAllowedBreakMinutes} mins)`);
+    addAuditLog('START_BREAK', 'DutySession', currentDutySession.id, `${currentUser.fullName} started break: ${reason}`);
   };
 
   const endBreak = () => {
     if (!currentDutySession) return;
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const breakDuration = 20; // 20 min standard increment for test/session
+
+    const newTotalBreaks = (currentDutySession.totalBreakMinutes || 0) + breakDuration;
 
     setCurrentDutySession(prev => prev ? {
       ...prev,
       status: 'active',
-      breaks: prev.breaks.map((b, i) => i === prev.breaks.length - 1 ? { ...b, endTime: timeStr } : b),
-      totalBreakMinutes: prev.totalBreakMinutes + 20
+      breaks: prev.breaks.map((b, i) => i === prev.breaks.length - 1 ? { ...b, endTime: timeStr, durationMinutes: breakDuration } : b),
+      totalBreakMinutes: newTotalBreaks
     } : null);
 
     setAttendanceRecords(prev => prev.map(a => 
@@ -442,8 +644,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } : a
     ));
 
-    showToast(`▶️ Break Ended at ${timeStr}. Resumed active duty.`);
-    addAuditLog('END_BREAK', 'DutySession', currentDutySession.id, `${currentUser.fullName} resumed active field duty`);
+    if (newTotalBreaks > shiftPolicy.maxAllowedBreakMinutes) {
+      showToast(`⚠️ Break Ended. Note: Total break (${newTotalBreaks}m) exceeds allowed limit (${shiftPolicy.maxAllowedBreakMinutes}m).`);
+    } else {
+      showToast(`▶️ Break Ended at ${timeStr}. Resumed active duty (${newTotalBreaks}m / ${shiftPolicy.maxAllowedBreakMinutes}m used).`);
+    }
+
+    addAuditLog('END_BREAK', 'DutySession', currentDutySession.id, `${currentUser.fullName} resumed active field duty. Total break today: ${newTotalBreaks} mins`);
   };
 
   const updateConsent = (newConsent: Partial<ConsentRecord>) => {
@@ -467,6 +674,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } : t));
     addAuditLog('UPDATE_TASK_STATUS', 'FieldTask', taskId, `Status changed to ${status}`);
     showToast(`Task status updated to: ${status.replace('_', ' ').toUpperCase()}`);
+  };
+
+  const startTaskTrip = (taskId: string) => {
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setTasks(prev => prev.map(t => {
+      if (t.id === taskId) {
+        return {
+          ...t,
+          status: 'in_progress',
+          tripStartedAt: timeStr,
+          lastHeadingStatus: 'approaching'
+        };
+      }
+      return t;
+    }));
+    addAuditLog('START_TASK_TRIP', 'FieldTask', taskId, `Employee started en-route trip navigation towards destination`);
+    showToast('🚀 Task Trip Started! Live destination telemetry is now broadcasting.');
+  };
+
+  const updateTaskEnRouteTelemetry = (taskId: string, currentLat: number, currentLng: number, speedKmH: number) => {
+    setTasks(prev => prev.map(t => {
+      if (t.id === taskId && t.targetLat && t.targetLng) {
+        // Calculate distance using simple calculation
+        const R = 6371e3;
+        const φ1 = (currentLat * Math.PI) / 180;
+        const φ2 = (t.targetLat * Math.PI) / 180;
+        const Δφ = ((t.targetLat - currentLat) * Math.PI) / 180;
+        const Δλ = ((t.targetLng - currentLng) * Math.PI) / 180;
+        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const dist = R * c;
+        const eta = Math.max(1, Math.round(dist / (((Math.max(10, speedKmH) * 1000) / 3600) * 60)));
+        const heading = dist <= (t.targetGeofenceRadiusMeters || 100) ? 'arrived' : speedKmH < 3 ? 'stationary' : 'approaching';
+
+        return {
+          ...t,
+          lastKnownDistanceMeters: Math.round(dist),
+          lastKnownEtaMinutes: eta,
+          lastHeadingStatus: heading
+        };
+      }
+      return t;
+    }));
   };
 
   const completeTaskWithGpsProof = (
@@ -608,7 +858,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('Expense claim rejected.');
   };
 
-  const sendMessage = (content: string, recipientId: string, recipientName: string) => {
+  const sendMessage = (
+    content: string, 
+    recipientId: string, 
+    recipientName: string,
+    options?: {
+      type?: InAppMessage['type'];
+      locationData?: InAppMessage['locationData'];
+    }
+  ) => {
     const newMsg: InAppMessage = {
       id: `msg-${Date.now()}`,
       tenantId: currentTenant.id,
@@ -620,10 +878,85 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       content,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       isRead: false,
-      type: recipientId === 'all_team' ? 'announcement' : 'direct'
+      type: options?.type || (recipientId === 'all_team' ? 'announcement' : 'direct'),
+      locationData: options?.locationData
     };
     setMessages(prev => [newMsg, ...prev]);
     showToast('Official message dispatched.');
+  };
+
+  const sendLocationMessage = (
+    recipientId: string = 'all_team', 
+    recipientName: string = 'Operations Team', 
+    customNote?: string
+  ) => {
+    const lat = currentDutySession?.currentLat || 28.49008 + (Math.random() * 0.003 - 0.0015);
+    const lng = currentDutySession?.currentLng || 77.08506 + (Math.random() * 0.003 - 0.0015);
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    // Determine realistic address based on employee duty location
+    const addresses = [
+      'DLF Cyber City, Building 10-A, DLF Phase 2, Gurugram, Haryana',
+      'Cyber Hub Plaza, Sector 24, DLF Phase 2, Gurugram',
+      'DLF Horizon Center, Golf Course Road, Sector 43, Gurugram',
+      'Connaught Place Inner Circle, Radial Road 3, New Delhi',
+      'Udyog Vihar Phase IV, Sector 18, Gurugram, Haryana'
+    ];
+    const address = currentDutySession?.lastKnownAddress || addresses[Math.floor(Math.random() * addresses.length)];
+    const battery = currentDutySession?.batteryLevel || Math.floor(78 + Math.random() * 18);
+
+    const locationMsg: InAppMessage = {
+      id: `msg-loc-${Date.now()}`,
+      tenantId: currentTenant.id,
+      senderId: currentUser.id,
+      senderName: currentUser.fullName,
+      senderRole: currentUser.role,
+      recipientId,
+      recipientName,
+      content: customNote || `📍 Live GPS Location: ${address}`,
+      timestamp: timeStr,
+      isRead: false,
+      type: 'location_share',
+      locationData: {
+        lat,
+        lng,
+        address,
+        accuracyMeters: 2.5,
+        batteryLevel: battery,
+        capturedAt: timeStr,
+        speedKmph: 0
+      }
+    };
+
+    setMessages(prev => [locationMsg, ...prev]);
+
+    // Also update duty session telemetry & add real-time route point
+    if (currentDutySession) {
+      setCurrentDutySession(prev => prev ? {
+        ...prev,
+        currentLat: lat,
+        currentLng: lng,
+        lastKnownAddress: address,
+        batteryLevel: battery
+      } : null);
+
+      setRoutePoints(prev => [
+        ...prev,
+        {
+          id: `rpt-${Date.now()}`,
+          sessionId: currentDutySession.id,
+          lat,
+          lng,
+          speedKmph: 0,
+          batteryLevel: battery,
+          timestamp: timeStr,
+          address
+        }
+      ]);
+    }
+
+    addAuditLog('LOCATION_SHARE', 'InAppMessage', locationMsg.id, `${currentUser.fullName} broadcasted live GPS coordinates (${lat.toFixed(5)}, ${lng.toFixed(5)}) to ${recipientName}`);
+    showToast(`📍 Live GPS coordinates successfully transmitted to ${recipientName}!`);
   };
 
   const applyLeave = (leaveData: Omit<LeaveRequest, 'id' | 'tenantId' | 'status' | 'appliedOn'>) => {
@@ -1171,6 +1504,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         approveAttendanceCorrection,
         tasks,
         updateTaskStatus,
+        startTaskTrip,
+        updateTaskEnRouteTelemetry,
         completeTaskWithGpsProof,
         addTask,
         fieldVisits,
@@ -1182,6 +1517,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         rejectExpense,
         messages,
         sendMessage,
+        sendLocationMessage,
         leaves,
         applyLeave,
         approveLeave,
@@ -1191,6 +1527,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         startCompanyTrial,
         registerCompany,
         resetToCleanProductionState,
+        shiftPolicy,
+        updateShiftPolicy,
         performanceWeights,
         setPerformanceWeights,
         performanceScores,

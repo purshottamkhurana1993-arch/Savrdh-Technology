@@ -9,6 +9,7 @@ import {
   Receipt, 
   MessageSquare, 
   Shield, 
+  ShieldCheck,
   HelpCircle, 
   Smartphone, 
   Play, 
@@ -40,6 +41,8 @@ export const EmployeePWA: React.FC = () => {
     currentUser, 
     currentTenant, 
     currentDutySession, 
+    shiftPolicy,
+    performanceScores,
     punchIn, 
     punchOut, 
     startBreak, 
@@ -56,6 +59,7 @@ export const EmployeePWA: React.FC = () => {
     submitExpense, 
     messages, 
     sendMessage, 
+    sendLocationMessage,
     leaves, 
     applyLeave, 
     attendanceRecords, 
@@ -93,6 +97,9 @@ export const EmployeePWA: React.FC = () => {
   // Form states
   const [breakReason, setBreakReason] = useState('Lunch Break');
   const [showBreakModal, setShowBreakModal] = useState(false);
+  const [showEarlyPunchOutModal, setShowEarlyPunchOutModal] = useState(false);
+  const [earlyPunchOutReason, setEarlyPunchOutReason] = useState('Urgent Family / Medical Emergency');
+  const [earlyPunchOutCustomNotes, setEarlyPunchOutCustomNotes] = useState('');
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [showVisitProofModal, setShowVisitProofModal] = useState<string | null>(null);
@@ -101,6 +108,27 @@ export const EmployeePWA: React.FC = () => {
   const [taskProofNotes, setTaskProofNotes] = useState('');
   const [taskPhotoAttached, setTaskPhotoAttached] = useState(false);
   const [newChatText, setNewChatText] = useState('');
+
+  // Performance data for current employee
+  const myPerformance = performanceScores.find(p => p.userId === currentUser.id) || {
+    overallScore: 92,
+    attendanceScore: 95,
+    taskCompletionScore: 90,
+    breakDisciplineScore: 100,
+    shiftAdherenceScore: 95,
+    gpsAccuracyScore: 98,
+    statusBadge: 'Elite Performer' as const,
+    breakdown: {
+      tasksAssigned: 3,
+      tasksCompleted: 3,
+      tasksGeofenceVerified: 3,
+      breakMinutesTaken: 20,
+      breakMinutesAllowed: shiftPolicy?.maxAllowedBreakMinutes || 45,
+      workingHoursActual: 8.2,
+      workingHoursRequired: shiftPolicy?.minWorkHoursRequired || 8.0,
+      earlyExitsCount: 0
+    }
+  };
 
   // Expense form
   const [expCategory, setExpCategory] = useState<'Fuel / Travel' | 'Client Meal' | 'Lodging' | 'Vehicle Maintenance' | 'Mobile / Internet' | 'Other'>('Fuel / Travel');
@@ -132,8 +160,27 @@ export const EmployeePWA: React.FC = () => {
     triggerConfetti();
   };
 
-  const handlePunchOut = () => {
-    punchOut();
+  const handlePunchOutClick = () => {
+    // Check if shift minimum hours or shift end time is met
+    const elapsedHours = elapsedSeconds / 3600;
+    const minRequired = shiftPolicy?.minWorkHoursRequired || 8.0;
+
+    if (shiftPolicy?.restrictEarlyPunchOut && elapsedHours < minRequired) {
+      setShowEarlyPunchOutModal(true);
+    } else {
+      punchOut();
+      triggerConfetti();
+    }
+  };
+
+  const confirmEarlyPunchOut = () => {
+    const finalReason = earlyPunchOutCustomNotes ? `${earlyPunchOutReason} (${earlyPunchOutCustomNotes})` : earlyPunchOutReason;
+    punchOut({
+      isEarlyExit: true,
+      earlyExitReason: finalReason
+    });
+    setShowEarlyPunchOutModal(false);
+    setEarlyPunchOutCustomNotes('');
   };
 
   const handleExpenseSubmit = (e: React.FormEvent) => {
@@ -278,22 +325,84 @@ export const EmployeePWA: React.FC = () => {
         {activeTab === 'duty' && (
           <div className="space-y-4">
             
-            {/* Employee Profile Header Card */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-xs">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center font-bold text-base shadow-sm">
-                  {currentUser.fullName.split(' ').map(n => n[0]).join('')}
+            {/* Employee Profile & Shift Policy Header Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3 shadow-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center font-bold text-base shadow-sm">
+                    {currentUser.fullName.split(' ').map(n => n[0]).join('')}
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-white">{currentUser.fullName}</h2>
+                    <p className="text-xs text-slate-400">{currentUser.designation || 'Field Area Officer'}</p>
+                    <span className="text-[10px] text-emerald-400 font-mono">{currentUser.employeeCode || 'AKBS-FLD-102'}</span>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-sm font-bold text-white">{currentUser.fullName}</h2>
-                  <p className="text-xs text-slate-400">{currentUser.designation || 'Field Area Officer'}</p>
-                  <span className="text-[10px] text-emerald-400 font-mono">{currentUser.employeeCode || 'AKBS-FLD-102'}</span>
+
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-400 block">Shift Timing</span>
+                  <span className="text-xs font-semibold text-emerald-400 font-mono">
+                    {shiftPolicy?.shiftStartTime || '09:00'} - {shiftPolicy?.shiftEndTime || '18:00'}
+                  </span>
                 </div>
               </div>
 
-              <div className="text-right">
-                <span className="text-[10px] text-slate-400 block">Shift Today</span>
-                <span className="text-xs font-semibold text-slate-200">09:00 - 18:00</span>
+              {/* Shift Rule Banner */}
+              <div className="pt-2 border-t border-slate-800/80 grid grid-cols-3 gap-2 text-[10px] text-slate-300">
+                <div className="bg-slate-950/60 p-2 rounded-xl border border-slate-800">
+                  <span className="text-slate-400 block">Min Hours:</span>
+                  <span className="font-bold text-white">{shiftPolicy?.minWorkHoursRequired || 8.0}h Required</span>
+                </div>
+                <div className="bg-slate-950/60 p-2 rounded-xl border border-slate-800">
+                  <span className="text-slate-400 block">Break Limit:</span>
+                  <span className="font-bold text-amber-400">Max {shiftPolicy?.maxAllowedBreakMinutes || 45}m</span>
+                </div>
+                <div className="bg-slate-950/60 p-2 rounded-xl border border-slate-800">
+                  <span className="text-slate-400 block">Admin Lock:</span>
+                  <span className="font-bold text-emerald-400">{shiftPolicy?.restrictEarlyPunchOut ? 'Enforced' : 'Flexible'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Employee Real-Time Performance & Task Rating Widget */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">My Performance Score</h3>
+                </div>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                  myPerformance.overallScore >= 88 
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' 
+                    : myPerformance.overallScore >= 70 
+                    ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                    : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                }`}>
+                  {myPerformance.statusBadge}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <div>
+                  <span className="text-2xl font-black text-white font-mono">{myPerformance.overallScore}%</span>
+                  <span className="text-[10px] text-slate-400 block">Overall Rating</span>
+                </div>
+                <div className="grid grid-cols-3 gap-3 text-right">
+                  <div>
+                    <span className="text-xs font-bold text-emerald-400 block">{myPerformance.taskCompletionScore}%</span>
+                    <span className="text-[9px] text-slate-400">Tasks ({myPerformance.breakdown?.tasksCompleted}/{myPerformance.breakdown?.tasksAssigned || 0})</span>
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-blue-400 block">{myPerformance.shiftAdherenceScore}%</span>
+                    <span className="text-[9px] text-slate-400">Shift Time</span>
+                  </div>
+                  <div>
+                    <span className={`text-xs font-bold block ${myPerformance.breakDisciplineScore < 80 ? 'text-amber-400' : 'text-purple-400'}`}>
+                      {myPerformance.breakDisciplineScore}%
+                    </span>
+                    <span className="text-[9px] text-slate-400">Breaks ({myPerformance.breakdown?.breakMinutesTaken}m/{myPerformance.breakdown?.breakMinutesAllowed}m)</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -308,7 +417,7 @@ export const EmployeePWA: React.FC = () => {
                 </div>
                 <p className="text-xs text-slate-400">
                   {isDutyActive 
-                    ? `Punched In at ${currentDutySession?.punchInTime}`
+                    ? `Punched In at ${currentDutySession?.punchInTime} • Target: ${shiftPolicy?.minWorkHoursRequired || 8.0}h work`
                     : isOnBreak
                     ? `Break started (${currentDutySession?.breaks[currentDutySession.breaks.length - 1]?.reason})`
                     : 'Tap below to record GPS start position'}
@@ -328,23 +437,25 @@ export const EmployeePWA: React.FC = () => {
                   </button>
                 ) : (
                   <button
-                    onClick={handlePunchOut}
+                    onClick={handlePunchOutClick}
                     className="w-36 h-36 rounded-full bg-gradient-to-tr from-rose-600 to-red-500 hover:from-rose-500 hover:to-red-400 text-white font-bold text-base shadow-xl shadow-rose-950 flex flex-col items-center justify-center gap-1.5 border-4 border-rose-400/30 transition-transform active:scale-95 cursor-pointer"
                   >
                     <Square className="w-8 h-8 fill-white" />
                     <span>PUNCH OUT</span>
-                    <span className="text-[9px] font-normal text-rose-100 opacity-80">Stop Tracking</span>
+                    <span className="text-[9px] font-normal text-rose-100 opacity-80">
+                      {elapsedSeconds / 3600 < (shiftPolicy?.minWorkHoursRequired || 8.0) ? 'Early Exit Auth' : 'End Duty'}
+                    </span>
                   </button>
                 )}
               </div>
 
-              {/* Break Control Buttons */}
+              {/* Break & Quick Location Dispatch Buttons */}
               {(isDutyActive || isOnBreak) && (
-                <div className="pt-2 flex justify-center gap-3">
+                <div className="pt-2 flex flex-wrap justify-center gap-2.5">
                   {!isOnBreak ? (
                     <button
                       onClick={() => setShowBreakModal(true)}
-                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition-colors"
+                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition-colors"
                     >
                       <Coffee className="w-3.5 h-3.5" />
                       <span>Take a Break</span>
@@ -352,12 +463,23 @@ export const EmployeePWA: React.FC = () => {
                   ) : (
                     <button
                       onClick={endBreak}
-                      className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md transition-colors animate-pulse"
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md transition-colors animate-pulse"
                     >
                       <Play className="w-3.5 h-3.5 fill-white" />
                       <span>Resume Active Duty</span>
                     </button>
                   )}
+
+                  <button
+                    onClick={() => {
+                      sendLocationMessage('all_team', 'Operations Team');
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95"
+                    title="Send current live GPS location directly to dispatch channel"
+                  >
+                    <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Send Live GPS to Chat</span>
+                  </button>
                 </div>
               )}
 
@@ -665,46 +787,165 @@ export const EmployeePWA: React.FC = () => {
 
         {/* ===================== TAB 5: OFFICIAL CHAT ===================== */}
         {activeTab === 'chat' && (
-          <div className="flex flex-col h-[420px] bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+          <div className="flex flex-col h-[480px] bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
             {/* Chat header */}
-            <div className="p-3 bg-slate-800/80 border-b border-slate-700 flex items-center justify-between text-xs">
-              <span className="font-bold text-white">Official Field Broadcast & Dispatch</span>
-              <span className="text-[10px] text-slate-400">🔒 Official FieldSure Channel</span>
+            <div className="p-3 bg-slate-800/90 border-b border-slate-700 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="font-bold text-white">Operations Dispatch & Broadcast</span>
+              </div>
+              <button
+                onClick={() => sendLocationMessage('all_team', 'Operations Team')}
+                className="px-2.5 py-1 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-500/50 text-emerald-300 hover:text-white font-bold text-[11px] flex items-center gap-1.5 transition-all active:scale-95 shadow-xs"
+              >
+                <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Share GPS</span>
+              </button>
             </div>
 
-            {/* Chat messages */}
-            <div className="flex-1 p-3 overflow-y-auto space-y-3 text-xs">
-              {messages.map((m) => (
-                <div key={m.id} className={`flex flex-col ${m.senderId === currentUser.id ? 'items-end' : 'items-start'}`}>
-                  <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mb-0.5">
-                    <span className="font-semibold text-slate-300">{m.senderName}</span>
-                    <span>• {m.timestamp}</span>
+            {/* Top Priority Directive Banner if Admin broadcasted location request */}
+            {messages.some(m => m.type === 'location_request' || /location|loacation|gps/i.test(m.content)) && (
+              <div className="p-3 bg-gradient-to-r from-emerald-950 via-slate-900 to-teal-950 border-b border-emerald-500/40 flex items-center justify-between gap-2 shadow-inner">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 animate-bounce">
+                    <Navigation className="w-4 h-4" />
                   </div>
-                  <div className={`p-2.5 rounded-2xl max-w-[85%] leading-relaxed ${
-                    m.senderId === currentUser.id 
-                      ? 'bg-emerald-600 text-white rounded-br-xs'
-                      : m.type === 'announcement'
-                      ? 'bg-amber-950/80 border border-amber-800 text-amber-200 rounded-bl-xs'
-                      : 'bg-slate-800 text-slate-200 rounded-bl-xs'
-                  }`}>
-                    {m.content}
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-bold text-white flex items-center gap-1">
+                      <span>Admin Requested Live GPS</span>
+                      <span className="text-[8px] bg-emerald-500/30 text-emerald-300 px-1 py-0.2 rounded font-extrabold uppercase">
+                        Action
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-300 truncate">Tap to send your current live location</p>
                   </div>
                 </div>
-              ))}
+                <button
+                  onClick={() => sendLocationMessage('all_team', 'Operations Team')}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shrink-0 shadow-md transition-all active:scale-95"
+                >
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>Send Now</span>
+                </button>
+              </div>
+            )}
+
+            {/* Chat messages list */}
+            <div className="flex-1 p-3 overflow-y-auto space-y-3 text-xs">
+              {messages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-4 text-slate-500">
+                  <MessageSquare className="w-8 h-8 mb-2 opacity-50" />
+                  <p className="text-xs font-semibold text-slate-300">No official broadcasts yet</p>
+                </div>
+              ) : (
+                messages.map((m) => {
+                  const isMine = m.senderId === currentUser.id;
+                  const isLocationRequest = m.type === 'location_request' || /location|loacation|gps/i.test(m.content);
+                  const isLocationShare = m.type === 'location_share' || !!m.locationData;
+
+                  return (
+                    <div key={m.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
+                      <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mb-0.5">
+                        <span className="font-semibold text-slate-300">{m.senderName}</span>
+                        <span>• {m.timestamp}</span>
+                        {isLocationShare && (
+                          <span className="text-[9px] text-emerald-400 font-bold">📍 GPS Telemetry</span>
+                        )}
+                      </div>
+
+                      {isLocationShare && m.locationData ? (
+                        // Live GPS Location Card
+                        <div className={`p-3 rounded-2xl max-w-[90%] w-full space-y-2.5 border ${
+                          isMine 
+                            ? 'bg-slate-950 border-emerald-500/50 text-white rounded-br-xs'
+                            : 'bg-slate-950 border-slate-700 text-white rounded-bl-xs'
+                        }`}>
+                          <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                            <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1.5">
+                              <MapPin className="w-3.5 h-3.5 text-emerald-400" /> Live GPS Report
+                            </span>
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                              Verified
+                            </span>
+                          </div>
+
+                          <div className="space-y-1 bg-slate-900 p-2 rounded-xl border border-slate-800/80">
+                            <p className="text-white text-[11px] font-medium leading-snug">
+                              {m.locationData.address}
+                            </p>
+                            <p className="text-[10px] font-mono text-slate-400">
+                              {m.locationData.lat.toFixed(5)}° N, {m.locationData.lng.toFixed(5)}° E
+                            </p>
+                          </div>
+
+                          <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
+                            <span className="flex items-center gap-1 text-emerald-400 font-medium">
+                              <ShieldCheck className="w-3 h-3" /> ±{m.locationData.accuracyMeters || '2.5'}m Precision
+                            </span>
+                            {m.locationData.batteryLevel && (
+                              <span className="flex items-center gap-1 text-slate-300">
+                                <Battery className="w-3 h-3 text-emerald-400" /> {m.locationData.batteryLevel}%
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ) : isLocationRequest && !isMine ? (
+                        // Location Request Card with 1-Click Share Button
+                        <div className="p-3 rounded-2xl max-w-[88%] text-xs leading-relaxed bg-gradient-to-r from-amber-950/90 via-slate-900 to-slate-900 border border-amber-500/50 text-amber-100 rounded-bl-xs space-y-2 shadow-md">
+                          <div className="flex items-center gap-1.5 text-amber-400 font-bold text-[10px] uppercase">
+                            <Radio className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                            <span>Location Directive from Admin</span>
+                          </div>
+                          <p className="text-white font-medium">{m.content}</p>
+                          <button
+                            onClick={() => sendLocationMessage('all_team', 'Operations Team')}
+                            className="w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95"
+                          >
+                            <MapPin className="w-3.5 h-3.5 text-white animate-bounce" />
+                            <span>📍 Send My Live Location</span>
+                          </button>
+                        </div>
+                      ) : (
+                        // Standard Bubble
+                        <div className={`p-2.5 rounded-2xl max-w-[85%] leading-relaxed ${
+                          isMine 
+                            ? 'bg-emerald-600 text-white rounded-br-xs'
+                            : m.type === 'announcement'
+                            ? 'bg-amber-950/80 border border-amber-800 text-amber-200 rounded-bl-xs'
+                            : 'bg-slate-800 text-slate-200 rounded-bl-xs'
+                        }`}>
+                          {m.content}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
 
-            {/* Chat input */}
-            <form onSubmit={handleSendMessage} className="p-2 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
+            {/* Chat input & quick location trigger */}
+            <form onSubmit={handleSendMessage} className="p-2.5 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => sendLocationMessage('all_team', 'Operations Team')}
+                title="Send Live GPS Location"
+                className="p-2.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/40 hover:text-white transition-colors shrink-0 active:scale-95"
+              >
+                <MapPin className="w-4 h-4" />
+              </button>
+
               <input
                 type="text"
-                placeholder="Type official message to operations..."
+                placeholder="Type message or reply to dispatch..."
                 value={newChatText}
                 onChange={(e) => setNewChatText(e.target.value)}
                 className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-hidden focus:border-emerald-500"
               />
+
               <button
                 type="submit"
-                className="p-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white"
+                disabled={!newChatText.trim()}
+                className="p-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white transition-all shrink-0"
               >
                 <Send className="w-4 h-4" />
               </button>
@@ -935,6 +1176,74 @@ export const EmployeePWA: React.FC = () => {
                 className="flex-1 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold"
               >
                 Start Break
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Early Punch-Out Authorization Modal */}
+      {showEarlyPunchOutModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-500/40 rounded-3xl p-5 max-w-sm w-full space-y-4 shadow-2xl">
+            <div className="flex items-center gap-2 text-amber-400">
+              <AlertCircle className="w-5 h-5" />
+              <h3 className="text-sm font-bold text-white">Early Punch-Out Authorization</h3>
+            </div>
+
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-[11px] text-amber-200 space-y-1">
+              <p className="font-semibold">⚠️ Shift Working Hours Incomplete</p>
+              <p className="text-slate-300">
+                Company policy requires minimum <strong className="text-white">{shiftPolicy?.minWorkHoursRequired || 8.0} hours</strong> of duty (Shift: {shiftPolicy?.shiftStartTime} - {shiftPolicy?.shiftEndTime}).
+              </p>
+              <p className="text-amber-300 text-[10px]">
+                Checking out early will be flagged in the Admin Command Center and will adjust your daily Shift Adherence score.
+              </p>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-slate-300 font-semibold block mb-1.5">Reason for Early Departure (Mandatory)</label>
+                <select
+                  value={earlyPunchOutReason}
+                  onChange={(e) => setEarlyPunchOutReason(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:border-amber-500 focus:outline-hidden"
+                >
+                  <option value="Urgent Family / Medical Emergency">Urgent Family / Medical Emergency</option>
+                  <option value="Assigned Client Work Completed with Admin Approval">Assigned Client Work Completed with Admin Approval</option>
+                  <option value="Field Vehicle / Bike Breakdown">Field Vehicle / Bike Breakdown</option>
+                  <option value="Severe Weather / Transport Disruption">Severe Weather / Transport Disruption</option>
+                  <option value="Official Half-Day Leave Approved">Official Half-Day Leave Approved</option>
+                  <option value="Other Urgent Operational Reason">Other Urgent Operational Reason</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-slate-300 font-semibold block mb-1">Additional Remarks / Admin Permission Note</label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Spoke with Operations Manager, leaving from CP office..."
+                  value={earlyPunchOutCustomNotes}
+                  onChange={(e) => setEarlyPunchOutCustomNotes(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-500 focus:outline-hidden"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowEarlyPunchOutModal(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors"
+              >
+                Cancel (Stay On Duty)
+              </button>
+              <button
+                type="button"
+                onClick={confirmEarlyPunchOut}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md shadow-rose-950 transition-all active:scale-95"
+              >
+                Confirm Early Exit
               </button>
             </div>
           </div>
