@@ -123,6 +123,8 @@ export const LiveDutyGoogleMap: React.FC<LiveDutyGoogleMapProps> = ({
 }) => {
   const { 
     currentTenant, 
+    users,
+    currentDutySession,
     routePoints, 
     fieldVisits, 
     sendMessage,
@@ -173,94 +175,98 @@ export const LiveDutyGoogleMap: React.FC<LiveDutyGoogleMapProps> = ({
     data: any;
   } | null>(null);
 
-  // Live Simulated/Real Employees with Real Delhi-NCR GPS Coordinates
+  // Live Simulated/Real Employees dynamically bound to current company tenant
   const [isSimulatingLiveTelemetry, setIsSimulatingLiveTelemetry] = useState<boolean>(true);
-  const [liveSessions, setLiveSessions] = useState([
-    {
-      id: 'duty-rahul-today',
-      userId: 'emp-rahul-sharma',
-      employeeName: 'Rahul Sharma',
-      employeeCode: 'AKBS-FLD-102',
-      department: 'North Region Distribution',
-      phone: '+91 97110 54321',
-      shiftName: 'General Field Shift (09:00 - 18:00)',
-      punchInTime: '08:54 AM',
-      status: 'active' as const,
-      totalDutyMinutes: 382,
-      lat: 28.6289,
-      lng: 77.2180,
-      address: 'Outer Circle, Connaught Place, New Delhi',
-      batteryLevel: 74,
-      speedKmH: 18,
-      accuracyMeters: 3.8,
-      lastPingAt: 'Just now',
-      activeTask: 'Poultry Farm Outlet Inspection & Temp Audit',
-      color: '#10b981'
-    },
-    {
-      id: 'duty-priya-today',
-      userId: 'emp-priya-verma',
-      employeeName: 'Priya Verma',
-      employeeCode: 'AKBS-FLD-103',
-      department: 'Field Quality Assurance',
-      phone: '+91 97110 54322',
-      shiftName: 'Morning Audit Shift (08:30 - 17:30)',
-      punchInTime: '08:28 AM',
-      status: 'active' as const,
-      totalDutyMinutes: 410,
-      lat: 28.4950,
-      lng: 77.0890,
-      address: 'Building 10B, DLF Cyber City, Gurugram',
-      batteryLevel: 61,
-      speedKmH: 0,
-      accuracyMeters: 3.2,
-      lastPingAt: '1 min ago',
-      activeTask: 'Cold Storage Reefer Unit 4 Calibration Audit',
-      color: '#3b82f6'
-    },
-    {
-      id: 'duty-amit-today',
-      userId: 'emp-amit-kumar',
-      employeeName: 'Amit Kumar',
-      employeeCode: 'AKBS-FLD-104',
-      department: 'Logistics',
-      phone: '+91 97110 54323',
-      shiftName: 'Early Dispatch Shift (07:00 - 16:00)',
-      punchInTime: '07:05 AM',
-      status: 'on_break' as const,
-      totalDutyMinutes: 420,
-      lat: 28.4110,
-      lng: 77.3180,
-      address: 'NH-44 Bypass Indian Oil Rest Stop, Faridabad',
-      batteryLevel: 82,
-      speedKmH: 0,
-      accuracyMeters: 4.5,
-      lastPingAt: '4 mins ago',
-      activeTask: 'Vehicle Refueling & Lunch Break',
-      color: '#f59e0b'
-    },
-    {
-      id: 'duty-neha-today',
-      userId: 'emp-neha-singh',
-      employeeName: 'Neha Singh',
-      employeeCode: 'AKBS-FLD-105',
-      department: 'Field Health Services',
-      phone: '+91 97110 54324',
-      shiftName: 'General Field Shift (09:00 - 18:00)',
-      punchInTime: '09:12 AM',
-      status: 'active' as const,
-      totalDutyMinutes: 350,
-      lat: 28.3840,
-      lng: 77.0420,
-      address: 'Badshahpur - Sohna Agro Cluster, Gurugram',
-      batteryLevel: 58,
-      speedKmH: 24,
-      accuracyMeters: 5.0,
-      lastPingAt: '2 mins ago',
-      activeTask: 'Broiler Flock Vaccine Batch Inspection',
-      color: '#8b5cf6'
+  
+  // Real company employees
+  const companyEmployees = users.filter(u => u.tenantId === currentTenant.id && u.role === 'employee');
+
+  const [liveSessions, setLiveSessions] = useState<any[]>(() => {
+    if (currentDutySession && currentDutySession.status === 'active' && currentDutySession.tenantId === currentTenant.id) {
+      return [{
+        id: currentDutySession.id,
+        userId: currentDutySession.userId,
+        employeeName: currentDutySession.employeeName,
+        employeeCode: 'EMP-FLD-01',
+        department: 'Field Operations',
+        phone: '+91 98765 43210',
+        shiftName: currentDutySession.shiftName,
+        punchInTime: currentDutySession.punchInTime,
+        status: currentDutySession.status,
+        totalDutyMinutes: currentDutySession.totalDutyMinutes || 45,
+        lat: currentDutySession.currentLocation?.lat || 28.6289,
+        lng: currentDutySession.currentLocation?.lng || 77.2180,
+        address: currentDutySession.currentLocation?.address || 'Outer Circle, Connaught Place, New Delhi',
+        batteryLevel: currentDutySession.currentLocation?.batteryLevel || 88,
+        speedKmH: 14,
+        accuracyMeters: 3.2,
+        lastPingAt: 'Just now',
+        activeTask: 'Field Site Geofence Inspection',
+        color: '#10b981'
+      }];
     }
-  ]);
+    // If employees exist in company, map active ones
+    if (companyEmployees.length > 0) {
+      return companyEmployees.map((emp, idx) => ({
+        id: `duty-${emp.id}`,
+        userId: emp.id,
+        employeeName: emp.fullName,
+        employeeCode: emp.employeeCode || `EMP-00${idx + 1}`,
+        department: emp.department || 'Field Operations',
+        phone: emp.phone,
+        shiftName: 'General Field Shift (09:00 - 18:00)',
+        punchInTime: '09:00 AM',
+        status: 'active' as const,
+        totalDutyMinutes: 120 + idx * 30,
+        lat: 28.6289 + idx * 0.04,
+        lng: 77.2180 - idx * 0.03,
+        address: `${emp.branch || 'Delhi NCR Region'} (Field Active)`,
+        batteryLevel: 75 + idx * 5,
+        speedKmH: 12,
+        accuracyMeters: 3.5,
+        lastPingAt: 'Just now',
+        activeTask: 'Active Route Duty',
+        color: idx === 0 ? '#10b981' : idx === 1 ? '#3b82f6' : '#8b5cf6'
+      }));
+    }
+    return [];
+  });
+
+  // Re-sync when currentDutySession changes
+  useEffect(() => {
+    if (currentDutySession && currentDutySession.status === 'active' && currentDutySession.tenantId === currentTenant.id) {
+      setLiveSessions(prev => {
+        const existingIdx = prev.findIndex(s => s.userId === currentDutySession.userId);
+        const updated = {
+          id: currentDutySession.id,
+          userId: currentDutySession.userId,
+          employeeName: currentDutySession.employeeName,
+          employeeCode: 'EMP-01',
+          department: 'Field Operations',
+          phone: '+91 98765 43210',
+          shiftName: currentDutySession.shiftName,
+          punchInTime: currentDutySession.punchInTime,
+          status: currentDutySession.status,
+          totalDutyMinutes: currentDutySession.totalDutyMinutes || 45,
+          lat: currentDutySession.currentLocation?.lat || 28.6289,
+          lng: currentDutySession.currentLocation?.lng || 77.2180,
+          address: currentDutySession.currentLocation?.address || 'Field Location, Connaught Place',
+          batteryLevel: currentDutySession.currentLocation?.batteryLevel || 88,
+          speedKmH: 15,
+          accuracyMeters: 3.2,
+          lastPingAt: 'Just now',
+          activeTask: 'Assigned Geofence Task',
+          color: '#10b981'
+        };
+        if (existingIdx >= 0) {
+          const clone = [...prev];
+          clone[existingIdx] = updated;
+          return clone;
+        }
+        return [updated, ...prev];
+      });
+    }
+  }, [currentDutySession, currentTenant.id]);
 
   // Leaflet Map Container Ref & Map Instance Ref
   const leafletContainerRef = useRef<HTMLDivElement | null>(null);

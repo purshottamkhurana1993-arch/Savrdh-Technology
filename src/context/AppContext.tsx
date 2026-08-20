@@ -113,6 +113,17 @@ interface AppContextType {
     maxEmployees: number;
     prefillSampleData: boolean;
   }) => void;
+  registerCompany: (data: {
+    companyName: string;
+    ownerName: string;
+    email: string;
+    phone: string;
+    industry: string;
+    plan?: Tenant['plan'];
+    maxEmployees?: number;
+    password?: string;
+  }) => { tenant: Tenant; owner: User };
+  resetToCleanProductionState: () => void;
 
   // Performance Engine
   performanceWeights: PerformanceWeightConfig;
@@ -160,12 +171,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [offlineQueueCount, setOfflineQueueCount] = useState<number>(0);
   const [notificationToast, setNotificationToast] = useState<string | null>(null);
 
+  // LocalStorage Persistence Helpers
+  const STORAGE_PREFIX = 'fieldsure_v2_';
+
+  function getStored<T>(key: string, fallback: T): T {
+    if (typeof window === 'undefined') return fallback;
+    try {
+      const item = localStorage.getItem(STORAGE_PREFIX + key);
+      return item ? JSON.parse(item) : fallback;
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  function setStored<T>(key: string, value: T) {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value));
+    } catch (e) {
+      console.error('LocalStorage write error:', e);
+    }
+  }
+
   // Tenants & Users
-  const [tenants, setTenants] = useState<Tenant[]>(mockTenants);
-  const [currentTenant, setCurrentTenant] = useState<Tenant>(mockTenants[0]);
-  const [users, setUsers] = useState<User[]>(mockUsers);
-  const [currentUser, setCurrentUser] = useState<User>(mockUsers[0]); // Savrdh Technologies Super-Admin by default
+  const [tenants, setTenants] = useState<Tenant[]>(() => getStored<Tenant[]>('tenants', mockTenants));
+  const [currentTenant, setCurrentTenant] = useState<Tenant>(() => getStored<Tenant>('current_tenant', mockTenants[0]));
+  const [users, setUsers] = useState<User[]>(() => getStored<User[]>('users', mockUsers));
+  const [currentUser, setCurrentUser] = useState<User>(() => getStored<User>('current_user', mockUsers[0])); // Savrdh Technologies Super-Admin by default
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(true);
+
+  // Sync core collections to LocalStorage
+  useEffect(() => { setStored('tenants', tenants); }, [tenants]);
+  useEffect(() => { setStored('users', users); }, [users]);
+  useEffect(() => { setStored('current_tenant', currentTenant); }, [currentTenant]);
+  useEffect(() => { setStored('current_user', currentUser); }, [currentUser]);
 
   const login = (user: User, tenant?: Tenant, targetView?: AppViewMode) => {
     setIsLoggedIn(true);
@@ -199,20 +238,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Operational State
-  const [currentDutySession, setCurrentDutySession] = useState<DutySession | null>(mockDutySessions[0]);
-  const [routePoints, setRoutePoints] = useState<RoutePoint[]>(mockRoutePoints);
-  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(mockAttendanceRecords);
-  const [tasks, setTasks] = useState<FieldTask[]>(mockTasks);
-  const [fieldVisits, setFieldVisits] = useState<FieldVisit[]>(mockFieldVisits);
-  const [expenses, setExpenses] = useState<ExpenseRecord[]>(mockExpenses);
-  const [messages, setMessages] = useState<InAppMessage[]>(mockMessages);
-  const [leaves, setLeaves] = useState<LeaveRequest[]>(mockLeaves);
+  const [currentDutySession, setCurrentDutySession] = useState<DutySession | null>(() => getStored<DutySession | null>('current_duty_session', mockDutySessions[0] || null));
+  const [routePoints, setRoutePoints] = useState<RoutePoint[]>(() => getStored<RoutePoint[]>('route_points', mockRoutePoints));
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(() => getStored<AttendanceRecord[]>('attendance', mockAttendanceRecords));
+  const [tasks, setTasks] = useState<FieldTask[]>(() => getStored<FieldTask[]>('tasks', mockTasks));
+  const [fieldVisits, setFieldVisits] = useState<FieldVisit[]>(() => getStored<FieldVisit[]>('field_visits', mockFieldVisits));
+  const [expenses, setExpenses] = useState<ExpenseRecord[]>(() => getStored<ExpenseRecord[]>('expenses', mockExpenses));
+  const [messages, setMessages] = useState<InAppMessage[]>(() => getStored<InAppMessage[]>('messages', mockMessages));
+  const [leaves, setLeaves] = useState<LeaveRequest[]>(() => getStored<LeaveRequest[]>('leaves', mockLeaves));
   const [performanceWeights, setPerformanceWeights] = useState<PerformanceWeightConfig>(defaultPerformanceWeights);
-  const [performanceScores, setPerformanceScores] = useState<EmployeePerformanceScore[]>(mockPerformanceScores);
-  const [invoices, setInvoices] = useState<SaaSInvoice[]>(mockInvoices);
-  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>(mockSupportTickets);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(mockAuditLogs);
-  const [consent, setConsent] = useState<ConsentRecord>(mockConsentRecord);
+  const [performanceScores, setPerformanceScores] = useState<EmployeePerformanceScore[]>(() => getStored<EmployeePerformanceScore[]>('scores', mockPerformanceScores));
+  const [invoices, setInvoices] = useState<SaaSInvoice[]>(() => getStored<SaaSInvoice[]>('invoices', mockInvoices));
+  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>(() => getStored<SupportTicket[]>('tickets', mockSupportTickets));
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => getStored<AuditLog[]>('audit_logs', mockAuditLogs));
+  const [consent, setConsent] = useState<ConsentRecord>(() => getStored<ConsentRecord>('consent', mockConsentRecord));
+
+  // Sync operational data to LocalStorage
+  useEffect(() => { setStored('current_duty_session', currentDutySession); }, [currentDutySession]);
+  useEffect(() => { setStored('route_points', routePoints); }, [routePoints]);
+  useEffect(() => { setStored('attendance', attendanceRecords); }, [attendanceRecords]);
+  useEffect(() => { setStored('tasks', tasks); }, [tasks]);
+  useEffect(() => { setStored('field_visits', fieldVisits); }, [fieldVisits]);
+  useEffect(() => { setStored('expenses', expenses); }, [expenses]);
+  useEffect(() => { setStored('messages', messages); }, [messages]);
+  useEffect(() => { setStored('leaves', leaves); }, [leaves]);
+  useEffect(() => { setStored('invoices', invoices); }, [invoices]);
+  useEffect(() => { setStored('tickets', supportTickets); }, [supportTickets]);
+  useEffect(() => { setStored('audit_logs', auditLogs); }, [auditLogs]);
+  useEffect(() => { setStored('consent', consent); }, [consent]);
 
   const showToast = (msg: string) => {
     setNotificationToast(msg);
@@ -917,6 +970,103 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast(`🚀 Trial Company "${newTenant.name}" is now live! 14-Day Full Sandbox Activated.`);
   };
 
+  const registerCompany = (data: {
+    companyName: string;
+    ownerName: string;
+    email: string;
+    phone: string;
+    industry: string;
+    plan?: Tenant['plan'];
+    maxEmployees?: number;
+    password?: string;
+  }) => {
+    const code = data.companyName
+      .replace(/[^a-zA-Z]/g, '')
+      .slice(0, 5)
+      .toUpperCase() || 'COMP';
+    const tenantId = `tenant-${Date.now()}`;
+    const ownerUserId = `user-${Date.now()}`;
+
+    const newTenant: Tenant = {
+      id: tenantId,
+      name: data.companyName,
+      code,
+      contactEmail: data.email,
+      contactPhone: data.phone,
+      plan: data.plan || 'Growth',
+      status: 'active',
+      maxEmployees: data.maxEmployees || 50,
+      activeEmployees: 1,
+      gstNumber: '07AABCU' + Math.floor(1000 + Math.random() * 9000) + 'R1ZN',
+      billingAddress: 'Corporate Headquarters, ' + (data.industry || 'Business District'),
+      createdAt: new Date().toISOString().slice(0, 10),
+      retentionDaysGps: 90,
+      retentionDaysAudit: 365,
+      features: {
+        liveTracking: true,
+        geofencing: true,
+        expenseManagement: true,
+        performanceScoring: true,
+        payrollExport: true,
+        apiAccess: true,
+      }
+    };
+
+    const ownerUser: User = {
+      id: ownerUserId,
+      tenantId,
+      role: 'company_owner',
+      fullName: data.ownerName,
+      email: data.email,
+      phone: data.phone,
+      employeeCode: `${code}-ADM-01`,
+      designation: 'Founder & Managing Director',
+      department: 'Executive Management',
+      status: 'active',
+      createdAt: new Date().toISOString().slice(0, 10)
+    };
+
+    setTenants(prev => [newTenant, ...prev]);
+    setUsers(prev => [ownerUser, ...prev]);
+    setCurrentTenant(newTenant);
+    setCurrentUser(ownerUser);
+    setIsLoggedIn(true);
+    setViewMode('company_admin');
+    showToast(`🎉 Welcome, ${data.ownerName}! ${data.companyName} is registered and ready for production.`);
+    return { tenant: newTenant, owner: ownerUser };
+  };
+
+  const resetToCleanProductionState = () => {
+    try {
+      if (typeof window !== 'undefined') {
+        Object.keys(localStorage).forEach(k => {
+          if (k.startsWith(STORAGE_PREFIX)) {
+            localStorage.removeItem(k);
+          }
+        });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setTenants(mockTenants);
+    setCurrentTenant(mockTenants[0]);
+    setUsers(mockUsers);
+    setCurrentUser(mockUsers[0]);
+    setCurrentDutySession(null);
+    setRoutePoints([]);
+    setAttendanceRecords([]);
+    setTasks([]);
+    setFieldVisits([]);
+    setExpenses([]);
+    setMessages([]);
+    setLeaves([]);
+    setPerformanceScores([]);
+    setInvoices([]);
+    setSupportTickets([]);
+    setAuditLogs(mockAuditLogs);
+    showToast('🧹 Platform reset to 100% clean production state with Master accounts.');
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -969,6 +1119,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         showFreeTrialModal,
         setShowFreeTrialModal,
         startCompanyTrial,
+        registerCompany,
+        resetToCleanProductionState,
         performanceWeights,
         setPerformanceWeights,
         performanceScores,

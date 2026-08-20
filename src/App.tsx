@@ -15,7 +15,25 @@ import { ShieldCheck, Lock, CheckCircle2, FileText, Download, Eye, Sparkles, Roc
 import { generateAndDownloadFieldSurePdf } from './utils/generateVectorPdf';
 
 const MainLayout: React.FC = () => {
-  const { viewMode, setViewMode, currentTenant, language, showToast } = useApp();
+  const { viewMode, setViewMode, currentTenant, currentUser, language, showToast } = useApp();
+
+  // Strict Role Guard: Redirect unauthorized views automatically
+  React.useEffect(() => {
+    if (currentUser.role === 'employee') {
+      if (viewMode !== 'employee_pwa' && viewMode !== 'product_manual' && viewMode !== 'auth_portal') {
+        setViewMode('employee_pwa');
+      }
+    } else if (
+      currentUser.role === 'company_owner' || 
+      currentUser.role === 'company_hr' || 
+      currentUser.role === 'company_admin' ||
+      currentUser.role === 'manager'
+    ) {
+      if (viewMode === 'super_admin' || viewMode === 'architecture') {
+        setViewMode('company_admin');
+      }
+    }
+  }, [currentUser.role, viewMode, setViewMode]);
 
   const handleInstantDownload = () => {
     try {
@@ -30,7 +48,7 @@ const MainLayout: React.FC = () => {
   };
 
   // If user opens or switches to full-screen multi-monitor command center
-  if (viewMode === 'map_command_center') {
+  if (viewMode === 'map_command_center' && currentUser.role !== 'employee') {
     return <MultiScreenMapCommandCenter />;
   }
 
@@ -39,7 +57,7 @@ const MainLayout: React.FC = () => {
       {/* Top Header */}
       <Header />
 
-      {/* Prominent Quick Access PDF & Poster Bar */}
+      {/* Prominent Quick Access Bar (Strictly tailored by role) */}
       {viewMode !== 'mockups_pdf' && viewMode !== 'coming_soon_poster' && (
         <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 text-white border-b border-slate-700 shadow-md">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -49,13 +67,17 @@ const MainLayout: React.FC = () => {
               </div>
               <div>
                 <p className="text-xs font-bold text-white flex items-center gap-2">
-                  <span>FieldSure™ Enterprise SaaS Launch Suite (Savrdh Technologies)</span>
+                  <span>FieldSure™ Enterprise SaaS Platform ({currentTenant.name})</span>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/30 text-emerald-300 font-semibold uppercase">
-                    Launch Q4 2026
+                    Role: {currentUser.role.replace('_', ' ')}
                   </span>
                 </p>
                 <p className="text-[11px] text-slate-400">
-                  Full multi-tenant architecture, Android-first PWA, Google Maps telemetry & official launch poster ready.
+                  {currentUser.role === 'employee' 
+                    ? 'Field Employee PWA Session • GPS Duty Tracking & Task Execution Active' 
+                    : currentUser.role === 'super_admin'
+                    ? 'Savrdh Super-Admin Governance Console • Master Tenant & License Oversight'
+                    : 'Company Operations Console • Scoped Strictly to ' + currentTenant.name}
                 </p>
               </div>
             </div>
@@ -66,31 +88,25 @@ const MainLayout: React.FC = () => {
                 className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-sm transition-all hover:scale-105 active:scale-95"
               >
                 <BookOpen className="w-3.5 h-3.5" />
-                <span>📖 User Manual & Working Model</span>
+                <span>📖 User Manual & Model</span>
               </button>
 
-              <button
-                onClick={() => setViewMode('map_command_center')}
-                className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm transition-all hover:scale-105 active:scale-95"
-              >
-                <Monitor className="w-3.5 h-3.5" />
-                <span>🖥️ Multi-Screen Live Map</span>
-              </button>
+              {currentUser.role !== 'employee' && (
+                <button
+                  onClick={() => setViewMode('map_command_center')}
+                  className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm transition-all hover:scale-105 active:scale-95"
+                >
+                  <Monitor className="w-3.5 h-3.5" />
+                  <span>🖥️ Live Map Wall</span>
+                </button>
+              )}
 
               <button
                 onClick={() => setViewMode('auth_portal')}
                 className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all hover:scale-105 active:scale-95"
               >
                 <KeyRound className="w-3.5 h-3.5" />
-                <span>🔐 Sign Up / Login Screen</span>
-              </button>
-
-              <button
-                onClick={() => setViewMode('coming_soon_poster')}
-                className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold shadow-sm transition-all hover:scale-105 active:scale-95"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>🚀 Coming Soon Poster</span>
+                <span>🔐 Switch Account</span>
               </button>
 
               <button
@@ -100,30 +116,36 @@ const MainLayout: React.FC = () => {
                 <Download className="w-3.5 h-3.5 stroke-[2.5]" />
                 <span>Download PDF Dossier</span>
               </button>
-
-              <button
-                onClick={() => setViewMode('mockups_pdf')}
-                className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-600 transition-colors"
-              >
-                <Eye className="w-3.5 h-3.5" />
-                <span>View 6 Mockup Pages</span>
-              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Main Content Viewport */}
+      {/* Main Content Viewport with Role Boundary Protection */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {viewMode === 'visualizer' && <ExecutiveKPIVisualizer />}
-        {viewMode === 'company_admin' && <CompanyDashboard />}
-        {viewMode === 'employee_pwa' && <EmployeePWA />}
-        {viewMode === 'super_admin' && <SuperAdminDashboard />}
-        {viewMode === 'architecture' && <SchemaAndSecurityViewer />}
-        {viewMode === 'mockups_pdf' && <SaaSMockupPdfDossier />}
-        {viewMode === 'coming_soon_poster' && <ComingSoonPoster />}
-        {viewMode === 'auth_portal' && <UniversalAuthPortal />}
-        {viewMode === 'product_manual' && <ProductManualAndWorkingModel />}
+        {/* If Employee is active and not on manual/auth, only render EmployeePWA */}
+        {currentUser.role === 'employee' ? (
+          viewMode === 'product_manual' ? (
+            <ProductManualAndWorkingModel />
+          ) : viewMode === 'auth_portal' ? (
+            <UniversalAuthPortal />
+          ) : (
+            <EmployeePWA />
+          )
+        ) : (
+          /* Non-employee view routing */
+          <>
+            {viewMode === 'visualizer' && <ExecutiveKPIVisualizer />}
+            {viewMode === 'company_admin' && <CompanyDashboard />}
+            {viewMode === 'employee_pwa' && <EmployeePWA />}
+            {viewMode === 'super_admin' && currentUser.role === 'super_admin' && <SuperAdminDashboard />}
+            {viewMode === 'architecture' && currentUser.role === 'super_admin' && <SchemaAndSecurityViewer />}
+            {viewMode === 'mockups_pdf' && <SaaSMockupPdfDossier />}
+            {viewMode === 'coming_soon_poster' && <ComingSoonPoster />}
+            {viewMode === 'auth_portal' && <UniversalAuthPortal />}
+            {viewMode === 'product_manual' && <ProductManualAndWorkingModel />}
+          </>
+        )}
       </main>
 
       {/* Enterprise SaaS Footer */}

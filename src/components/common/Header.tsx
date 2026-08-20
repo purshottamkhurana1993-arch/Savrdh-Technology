@@ -71,155 +71,199 @@ export const Header: React.FC = () => {
           {/* Logo & Tenant Badge */}
           <div className="flex items-center gap-4">
             <button 
-              onClick={() => setViewMode('visualizer')}
+              onClick={() => {
+                if (currentUser.role === 'employee') setViewMode('employee_pwa');
+                else if (currentUser.role === 'super_admin') setViewMode('super_admin');
+                else setViewMode('company_admin');
+              }}
               className="text-left focus:outline-hidden"
             >
               <FieldSureLogo size="md" />
             </button>
 
-            {/* Tenant Selector Dropdown */}
-            <div className="relative hidden md:block">
-              <button
-                onClick={() => {
-                  setShowTenantMenu(!showTenantMenu);
-                  setShowUserMenu(false);
-                }}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 transition-colors"
-              >
-                <Building2 className="w-3.5 h-3.5 text-slate-500" />
-                <span className="max-w-[140px] truncate">{currentTenant.name}</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold uppercase">
-                  {currentTenant.plan}
-                </span>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-              </button>
+            {/* Tenant Selector: Super-Admin gets multi-tenant selector. Company Owner and Employee see strictly their own company */}
+            {currentUser.role === 'super_admin' ? (
+              <div className="relative hidden md:block">
+                <button
+                  onClick={() => {
+                    setShowTenantMenu(!showTenantMenu);
+                    setShowUserMenu(false);
+                  }}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 transition-colors"
+                  title="Super-Admin Multi-Tenant Switcher"
+                >
+                  <Building2 className="w-3.5 h-3.5 text-purple-600" />
+                  <span className="max-w-[140px] truncate">{currentTenant.name}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-200 text-purple-800 font-semibold uppercase">
+                    {currentTenant.plan}
+                  </span>
+                  <ChevronDown className="w-3.5 h-3.5 text-purple-500" />
+                </button>
 
-              {showTenantMenu && (
-                <div className="absolute left-0 mt-1.5 w-64 rounded-xl bg-white shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95">
-                  <div className="px-3 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                    Select Tenant Company
+                {showTenantMenu && (
+                  <div className="absolute left-0 mt-1.5 w-64 rounded-xl bg-white shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95">
+                    <div className="px-3 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                      Select Tenant Company (Super-Admin)
+                    </div>
+                    {tenants.map(tenant => (
+                      <button
+                        key={tenant.id}
+                        onClick={() => {
+                          setCurrentTenant(tenant);
+                          setShowTenantMenu(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-50 ${tenant.id === currentTenant.id ? 'bg-purple-50 text-purple-900 font-semibold' : 'text-slate-700'}`}
+                      >
+                        <div className="flex flex-col">
+                          <span className="truncate">{tenant.name}</span>
+                          <span className="text-[10px] text-slate-500">{tenant.activeEmployees} active employees</span>
+                        </div>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold ${tenant.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {tenant.plan}
+                        </span>
+                      </button>
+                    ))}
                   </div>
-                  {tenants.map(tenant => (
-                    <button
-                      key={tenant.id}
-                      onClick={() => {
-                        setCurrentTenant(tenant);
-                        setShowTenantMenu(false);
-                      }}
-                      className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-50 ${tenant.id === currentTenant.id ? 'bg-emerald-50 text-emerald-900 font-semibold' : 'text-slate-700'}`}
-                    >
-                      <div className="flex flex-col">
-                        <span className="truncate">{tenant.name}</span>
-                        <span className="text-[10px] text-slate-500">{tenant.activeEmployees} active employees</span>
-                      </div>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold ${tenant.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                        {tenant.plan}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            ) : (
+              <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-200">
+                <Building2 className="w-3.5 h-3.5 text-slate-500" />
+                <span className="max-w-[150px] truncate">{currentTenant.name}</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-100 text-blue-800 font-semibold uppercase">
+                  {currentTenant.code}
+                </span>
+              </div>
+            )}
           </div>
 
-          {/* Navigation View Switcher (Tabs) */}
+          {/* Navigation View Switcher (Tabs strictly filtered by User Role) */}
           <nav className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/80 overflow-x-auto max-w-full">
-            <button
-              onClick={() => setViewMode('visualizer')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                viewMode === 'visualizer'
-                  ? 'bg-white text-emerald-700 shadow-xs ring-1 ring-slate-200/50'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-              }`}
-            >
-              <BarChart3 className="w-3.5 h-3.5" />
-              <span>{language === 'en' ? 'KPI Visualizer' : 'डैशबोर्ड एनालिटिक्स'}</span>
-            </button>
+            
+            {/* 1. EMPLOYEE ROLE: ONLY Employee PWA and Product Manual */}
+            {currentUser.role === 'employee' && (
+              <>
+                <button
+                  onClick={() => setViewMode('employee_pwa')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                    viewMode === 'employee_pwa'
+                      ? 'bg-white text-emerald-700 shadow-xs ring-1 ring-slate-200/50'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span>{language === 'en' ? 'Employee PWA' : 'कर्मचारी ऍप'}</span>
+                </button>
 
-            <button
-              onClick={() => {
-                setViewMode('company_admin');
-                const admin = users.find(u => u.role === 'company_owner' || u.role === 'company_hr') || users[1];
-                setCurrentUser(admin);
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                viewMode === 'company_admin'
-                  ? 'bg-white text-blue-700 shadow-xs ring-1 ring-slate-200/50'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-              }`}
-            >
-              <Building2 className="w-3.5 h-3.5" />
-              <span>{language === 'en' ? 'Company Admin' : 'कंपनी एडमिन'}</span>
-            </button>
+                <button
+                  onClick={() => setViewMode('product_manual')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                    viewMode === 'product_manual'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50'
+                  }`}
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>{language === 'en' ? '📖 Help & Guide' : '📖 गाइड'}</span>
+                </button>
+              </>
+            )}
 
-            <button
-              onClick={() => {
-                setViewMode('employee_pwa');
-                const emp = users.find(u => u.role === 'employee') || users[3];
-                setCurrentUser(emp);
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                viewMode === 'employee_pwa'
-                  ? 'bg-white text-emerald-700 shadow-xs ring-1 ring-slate-200/50'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-              }`}
-            >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span>{language === 'en' ? 'Employee PWA' : 'कर्मचारी ऍप'}</span>
-            </button>
+            {/* 2. COMPANY OWNER / HR ROLE: Company Admin, KPI Visualizer (Own Company), Multi-Screen Map */}
+            {(currentUser.role === 'company_owner' || currentUser.role === 'company_hr' || currentUser.role === 'company_admin' || currentUser.role === 'manager') && (
+              <>
+                <button
+                  onClick={() => setViewMode('company_admin')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                    viewMode === 'company_admin'
+                      ? 'bg-white text-blue-700 shadow-xs ring-1 ring-slate-200/50'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <Building2 className="w-3.5 h-3.5" />
+                  <span>{language === 'en' ? 'Company Admin' : 'कंपनी एडमिन'}</span>
+                </button>
 
-            <button
-              onClick={() => {
-                setViewMode('super_admin');
-                const superAdmin = users.find(u => u.role === 'super_admin') || users[0];
-                setCurrentUser(superAdmin);
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                viewMode === 'super_admin'
-                  ? 'bg-white text-purple-700 shadow-xs ring-1 ring-slate-200/50'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>{language === 'en' ? 'Savrdh Super-Admin' : 'सर्वर्ध सुपर एडमिन'}</span>
-            </button>
+                <button
+                  onClick={() => setViewMode('visualizer')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                    viewMode === 'visualizer'
+                      ? 'bg-white text-emerald-700 shadow-xs ring-1 ring-slate-200/50'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <BarChart3 className="w-3.5 h-3.5" />
+                  <span>{language === 'en' ? 'Company Analytics' : 'कंपनी एनालिटिक्स'}</span>
+                </button>
 
-            <button
-              onClick={() => setViewMode('architecture')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                viewMode === 'architecture'
-                  ? 'bg-white text-slate-800 shadow-xs ring-1 ring-slate-200/50'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-              }`}
-            >
-              <Database className="w-3.5 h-3.5" />
-              <span>{language === 'en' ? 'DB & Schema' : 'डेटाबेस स्कीमा'}</span>
-            </button>
+                <button
+                  onClick={() => setViewMode('map_command_center')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                    viewMode === 'map_command_center'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50 border border-indigo-200/80 bg-indigo-50/50'
+                  }`}
+                >
+                  <MapPin className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
+                  <span>{language === 'en' ? '🖥️ Live Map Wall' : '🖥️ लाइव मैप'}</span>
+                </button>
 
-            <button
-              onClick={() => setViewMode('product_manual')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
-                viewMode === 'product_manual'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 border border-emerald-200/80 bg-emerald-50/50'
-              }`}
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              <span>{language === 'en' ? '📖 Product Manual & Model' : '📖 यूजर मैन्युअल व मॉडल'}</span>
-            </button>
+                <button
+                  onClick={() => setViewMode('product_manual')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                    viewMode === 'product_manual'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50'
+                  }`}
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>{language === 'en' ? '📖 User Manual' : '📖 यूजर मैन्युअल'}</span>
+                </button>
+              </>
+            )}
 
-            <button
-              onClick={() => setViewMode('map_command_center')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
-                viewMode === 'map_command_center'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50 border border-indigo-200/80 bg-indigo-50/50'
-              }`}
-            >
-              <MapPin className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
-              <span>{language === 'en' ? '🖥️ Multi-Screen Map Wall' : '🖥️ मल्टी-स्क्रीन मैप'}</span>
-            </button>
+            {/* 3. SUPER ADMIN ROLE: Only Platform Master, DB Schema, and Product Manual */}
+            {currentUser.role === 'super_admin' && (
+              <>
+                <button
+                  onClick={() => setViewMode('super_admin')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                    viewMode === 'super_admin'
+                      ? 'bg-white text-purple-700 shadow-xs ring-1 ring-slate-200/50'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>{language === 'en' ? 'Savrdh Super-Admin' : 'सर्वर्ध सुपर एडमिन'}</span>
+                </button>
 
+                <button
+                  onClick={() => setViewMode('architecture')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                    viewMode === 'architecture'
+                      ? 'bg-white text-slate-800 shadow-xs ring-1 ring-slate-200/50'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <Database className="w-3.5 h-3.5" />
+                  <span>{language === 'en' ? 'DB & Security Architecture' : 'डेटाबेस स्कीमा'}</span>
+                </button>
+
+                <button
+                  onClick={() => setViewMode('product_manual')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                    viewMode === 'product_manual'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50'
+                  }`}
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>{language === 'en' ? '📖 Product Manual & Model' : '📖 यूजर मैन्युअल व मॉडल'}</span>
+                </button>
+              </>
+            )}
+
+            {/* Auth Portal Button (Always accessible to switch or log in) */}
             <button
               onClick={() => setViewMode('auth_portal')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
@@ -229,31 +273,7 @@ export const Header: React.FC = () => {
               }`}
             >
               <KeyRound className="w-3.5 h-3.5" />
-              <span>{language === 'en' ? '🔐 Sign Up / Login' : '🔐 साइन-अप / लॉगिन'}</span>
-            </button>
-
-            <button
-              onClick={() => setViewMode('mockups_pdf')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
-                viewMode === 'mockups_pdf'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50'
-              }`}
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>{language === 'en' ? '📄 Export All Mockups PDF' : '📄 सभी मॉकअप PDF'}</span>
-            </button>
-
-            <button
-              onClick={() => setViewMode('coming_soon_poster')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
-                viewMode === 'coming_soon_poster'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'text-amber-700 hover:text-amber-900 hover:bg-amber-50'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>{language === 'en' ? '🚀 Coming Soon Poster' : '🚀 कमिंग सून पोस्टर'}</span>
+              <span>{language === 'en' ? '🔐 Switch / Login' : '🔐 लॉगिन'}</span>
             </button>
           </nav>
 
@@ -329,71 +349,67 @@ export const Header: React.FC = () => {
                     <div className="text-[11px] text-slate-500">{currentUser.email} • {currentUser.role.replace('_', ' ')}</div>
                   </div>
 
-                  {/* 3 Main Role Quick Switchers */}
+                  {/* Role Switcher or Info */}
                   <div className="p-2 space-y-1">
                     <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                      Switch Role Workspace
+                      {currentUser.role === 'employee' ? 'Account & Session' : 'Quick Role Workspace'}
                     </div>
 
-                    {/* Role 1: Company Admin */}
-                    <button
-                      onClick={() => {
-                        const admin = users.find(u => u.role === 'company_owner' || u.role === 'company_hr') || users[1];
-                        login(admin, undefined, 'company_admin');
-                        setShowUserMenu(false);
-                      }}
-                      className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${currentUser.role === 'company_owner' || currentUser.role === 'company_hr' ? 'bg-blue-50 text-blue-900 font-bold border border-blue-200' : 'text-slate-700 hover:bg-slate-50'}`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Building2 className="w-4 h-4 text-blue-600" />
-                        <div>
-                          <span className="block font-medium">1. Company Owner / Admin</span>
-                          <span className="text-[10px] text-slate-400">Vikram Singhania (Owner)</span>
+                    {/* If employee: only show their current role info and link to auth portal */}
+                    {currentUser.role === 'employee' ? (
+                      <div className="px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs">
+                        <div className="font-bold flex items-center gap-1.5">
+                          <Smartphone className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Field Officer Portal (Active)</span>
                         </div>
+                        <p className="text-[11px] text-emerald-700 mt-1">
+                          Scoped to assigned company: <strong>{currentTenant.name}</strong>. Admin access is restricted.
+                        </p>
                       </div>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono">HR/Owner</span>
-                    </button>
-
-                    {/* Role 2: Field Employee */}
-                    <button
-                      onClick={() => {
-                        const emp = users.find(u => u.role === 'employee') || users[3];
-                        login(emp, undefined, 'employee_pwa');
-                        setShowUserMenu(false);
-                      }}
-                      className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${currentUser.role === 'employee' ? 'bg-emerald-50 text-emerald-900 font-bold border border-emerald-200' : 'text-slate-700 hover:bg-slate-50'}`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Smartphone className="w-4 h-4 text-emerald-600" />
-                        <div>
-                          <span className="block font-medium">2. Field Officer (Employee)</span>
-                          <span className="text-[10px] text-slate-400">Rahul Sharma (Sr. Officer)</span>
-                        </div>
+                    ) : currentUser.role === 'super_admin' ? (
+                      /* Super Admin options */
+                      <div className="space-y-1">
+                        <button
+                          onClick={() => {
+                            setViewMode('super_admin');
+                            setShowUserMenu(false);
+                          }}
+                          className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between bg-purple-50 text-purple-900 font-bold border border-purple-200"
+                        >
+                          <div className="flex items-center gap-2">
+                            <ShieldCheck className="w-4 h-4 text-purple-600" />
+                            <div>
+                              <span className="block font-medium">Savrdh Super-Admin</span>
+                              <span className="text-[10px] text-slate-400">Master Platform Console</span>
+                            </div>
+                          </div>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-mono">Master</span>
+                        </button>
                       </div>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono">PWA</span>
-                    </button>
-
-                    {/* Role 3: Savrdh Super Admin */}
-                    <button
-                      onClick={() => {
-                        const superAdmin = users.find(u => u.role === 'super_admin') || users[0];
-                        login(superAdmin, undefined, 'super_admin');
-                        setShowUserMenu(false);
-                      }}
-                      className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${currentUser.role === 'super_admin' ? 'bg-purple-50 text-purple-900 font-bold border border-purple-200' : 'text-slate-700 hover:bg-slate-50'}`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <ShieldCheck className="w-4 h-4 text-purple-600" />
-                        <div>
-                          <span className="block font-medium">3. Savrdh Super-Admin</span>
-                          <span className="text-[10px] text-slate-400">Master Governance Console</span>
-                        </div>
+                    ) : (
+                      /* Company Owner / HR options */
+                      <div className="space-y-1">
+                        <button
+                          onClick={() => {
+                            setViewMode('company_admin');
+                            setShowUserMenu(false);
+                          }}
+                          className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between bg-blue-50 text-blue-900 font-bold border border-blue-200"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Building2 className="w-4 h-4 text-blue-600" />
+                            <div>
+                              <span className="block font-medium">{currentTenant.name} Admin</span>
+                              <span className="text-[10px] text-slate-400">{currentUser.fullName}</span>
+                            </div>
+                          </div>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono">Admin</span>
+                        </button>
                       </div>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-mono">Master</span>
-                    </button>
+                    )}
                   </div>
 
-                  {/* Dedicated Logout Action Bar */}
+                  {/* Dedicated Logout / Switch Account Action Bar */}
                   <div className="p-2 space-y-1">
                     <button
                       onClick={() => {
@@ -403,7 +419,7 @@ export const Header: React.FC = () => {
                       className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-blue-700 hover:bg-blue-50 flex items-center gap-2 transition-colors"
                     >
                       <KeyRound className="w-3.5 h-3.5 text-blue-600" />
-                      <span>Open 3-Role Login Portal</span>
+                      <span>Switch Account (Login Portal)</span>
                     </button>
 
                     <button
@@ -415,7 +431,7 @@ export const Header: React.FC = () => {
                     >
                       <div className="flex items-center gap-2">
                         <LogOut className="w-4 h-4 text-rose-600" />
-                        <span>Log Out of Account</span>
+                        <span>Log Out of Session</span>
                       </div>
                       <span className="text-[10px] bg-rose-200/80 text-rose-900 px-1.5 py-0.5 rounded font-mono">Exit</span>
                     </button>
