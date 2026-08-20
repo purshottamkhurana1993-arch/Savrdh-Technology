@@ -52,6 +52,11 @@ export interface User {
   reportingManagerId?: string;
   status: 'active' | 'inactive' | 'invited';
   createdAt: string;
+  // Field territory & operational range
+  assignedTerritoryName?: string;
+  assignedTerritoryBaseLat?: number;
+  assignedTerritoryBaseLng?: number;
+  assignedOperatingRadiusKm?: number;
 }
 
 export interface ShiftPolicyConfig {
@@ -166,6 +171,17 @@ export interface FieldTask {
   priority: 'low' | 'medium' | 'high' | 'urgent';
   dueDate: string;
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  // Sequential Locking & En-Route Waypoint fields
+  isEnRouteStop?: boolean;
+  enRouteDetourMeters?: number;
+  isLocked?: boolean;
+  lockReason?: string;
+  sequenceOrder?: number;
+  // Territory & Operational Range fields
+  territoryName?: string;
+  isInsideAssignedTerritory?: boolean;
+  distanceFromTerritoryBaseKm?: number;
+  territoryWarning?: string;
   // En-Route Live Tracking fields
   tripStartedAt?: string;
   initialTripDistanceMeters?: number;

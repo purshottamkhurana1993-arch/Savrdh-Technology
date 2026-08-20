@@ -94,7 +94,11 @@ export const mockUsers: User[] = [
     branch: 'Delhi NCR Hub',
     reportingManagerId: 'user-apex-admin',
     status: 'active',
-    createdAt: '2026-01-16'
+    createdAt: '2026-01-16',
+    assignedTerritoryName: 'Central & South Delhi Operational Zone',
+    assignedTerritoryBaseLat: 28.6328,
+    assignedTerritoryBaseLng: 77.2235,
+    assignedOperatingRadiusKm: 8.0
   }
 ];
 
@@ -126,7 +130,36 @@ export const mockTasks: FieldTask[] = [
     initialTripDistanceMeters: 2800,
     lastKnownDistanceMeters: 920,
     lastKnownEtaMinutes: 4,
-    lastHeadingStatus: 'approaching'
+    lastHeadingStatus: 'approaching',
+    territoryName: 'Central & South Delhi Operational Zone',
+    isInsideAssignedTerritory: true,
+    distanceFromTerritoryBaseKm: 0.1,
+    isLocked: false,
+    sequenceOrder: 1
+  },
+  {
+    id: 'task-rahul-enroute',
+    tenantId: 'tenant-apex',
+    assignedToUserId: 'emp-rahul-sharma',
+    assignedToName: 'Rahul Sharma (Field Lead)',
+    createdById: 'user-apex-admin',
+    title: 'Urgent Sample Handover (On-The-Way Lead)',
+    description: 'Quick document pickup & sample verification at ITO transit junction directly along your route corridor.',
+    clientName: 'Apollo Pharmacy Express Hub',
+    clientAddress: 'Vikram Nagar, Near ITO Crossing, Bahadur Shah Zafar Marg, New Delhi',
+    targetLat: 28.6275,
+    targetLng: 77.2410,
+    targetGeofenceRadiusMeters: 80,
+    priority: 'urgent',
+    dueDate: '2026-08-20',
+    status: 'pending',
+    isEnRouteStop: true,
+    enRouteDetourMeters: 280,
+    territoryName: 'Central & South Delhi Operational Zone',
+    isInsideAssignedTerritory: true,
+    distanceFromTerritoryBaseKm: 1.8,
+    isLocked: false, // Allowed as en-route waypoint stop!
+    sequenceOrder: 2
   },
   {
     id: 'task-rahul-02',
@@ -141,10 +174,17 @@ export const mockTasks: FieldTask[] = [
     targetLat: 28.5276,
     targetLng: 77.2135,
     targetGeofenceRadiusMeters: 150,
-    priority: 'urgent',
+    priority: 'high',
     dueDate: '2026-08-20',
     status: 'pending',
-    initialTripDistanceMeters: 12400
+    initialTripDistanceMeters: 12400,
+    territoryName: 'Central & South Delhi Operational Zone',
+    isInsideAssignedTerritory: true,
+    distanceFromTerritoryBaseKm: 11.8,
+    territoryWarning: 'Near territory outer boundary (11.8 km vs 8.0 km default)',
+    isLocked: true,
+    lockReason: 'Complete Airtel Enterprise Hub inspection first before travelling to Saket',
+    sequenceOrder: 3
   }
 ];
 

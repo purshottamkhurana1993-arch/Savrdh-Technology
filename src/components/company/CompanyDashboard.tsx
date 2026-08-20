@@ -46,7 +46,7 @@ import { LiveDutyGoogleMap } from './LiveDutyGoogleMap';
 import { EmployeeRosterView } from './EmployeeRosterView';
 import { LiveChatDispatchView } from './LiveChatDispatchView';
 import { FieldTask, LeaveRequest } from '../../types';
-import { evaluateEnRouteTelemetry, formatDistance } from '../../utils/geoTracking';
+import { evaluateEnRouteTelemetry, evaluateTerritoryRange, formatDistance } from '../../utils/geoTracking';
 import { LiveTaskRadarModal } from '../common/LiveTaskRadarModal';
 
 export const CompanyDashboard: React.FC = () => {
@@ -115,6 +115,7 @@ export const CompanyDashboard: React.FC = () => {
   const [newTaskDesc, setNewTaskDesc] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
   const [newTaskAssignee, setNewTaskAssignee] = useState(companyEmployees[0]?.id || 'emp-rahul-sharma');
+  const [newTaskIsEnRoute, setNewTaskIsEnRoute] = useState(false);
 
   // Attendance & Break metrics
   const totalEmployees = companyUsers.length;
@@ -128,6 +129,17 @@ export const CompanyDashboard: React.FC = () => {
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
     const assignee = users.find(u => u.id === newTaskAssignee) || companyEmployees[0] || users[3];
+    
+    // Evaluate operational territory range for this task
+    const territoryEval = evaluateTerritoryRange(
+      newTaskLat,
+      newTaskLng,
+      assignee.assignedTerritoryBaseLat || 28.6328,
+      assignee.assignedTerritoryBaseLng || 77.2235,
+      assignee.assignedOperatingRadiusKm || 8.0,
+      assignee.assignedTerritoryName || 'Assigned Operational Zone'
+    );
+
     addTask({
       assignedToUserId: assignee.id,
       assignedToName: assignee.fullName,
@@ -141,16 +153,31 @@ export const CompanyDashboard: React.FC = () => {
       targetGeofenceRadiusMeters: 100,
       priority: newTaskPriority,
       dueDate: new Date(Date.now() + 86400000).toISOString().slice(0, 10) + ' 05:00 PM',
-      status: 'pending'
+      status: 'pending',
+      isEnRouteStop: newTaskIsEnRoute,
+      enRouteDetourMeters: newTaskIsEnRoute ? 280 : undefined,
+      territoryName: territoryEval.territoryName,
+      isInsideAssignedTerritory: territoryEval.isInsideTerritory,
+      distanceFromTerritoryBaseKm: territoryEval.distanceFromBaseKm,
+      territoryWarning: territoryEval.warningMessage
     });
+
     setNewTaskTitle('');
     setNewTaskClient('');
     setNewTaskAddress('Connaught Place Outer Circle, New Delhi');
     setNewTaskLat(28.6315);
     setNewTaskLng(77.2167);
     setNewTaskDesc('');
+    setNewTaskIsEnRoute(false);
     setShowNewTaskModal(false);
-    showToast(`📍 Task with 100m GPS Geofence dispatched to ${assignee.fullName}!`);
+    
+    if (newTaskIsEnRoute) {
+      showToast(`⚡ On-the-way Waypoint Lead dispatched to ${assignee.fullName}!`);
+    } else if (!territoryEval.isInsideTerritory) {
+      showToast(`⚠️ Task dispatched, but flagged as Out-of-Territory (${territoryEval.formattedDistance} from base)!`);
+    } else {
+      showToast(`📍 In-Territory Task dispatched to ${assignee.fullName} (${territoryEval.formattedDistance} from base)!`);
+    }
   };
 
   const handleAssignTaskDirect = (empId: string) => {
@@ -920,6 +947,16 @@ export const CompanyDashboard: React.FC = () => {
                               <Radio className="w-3 h-3 text-blue-600" /> En-Route Active
                             </span>
                           )}
+                          {task.isEnRouteStop && task.status !== 'completed' && (
+                            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold border border-amber-300">
+                              ⚡ En-Route Waypoint (+{task.enRouteDetourMeters || 280}m detour)
+                            </span>
+                          )}
+                          {task.isLocked && task.status === 'pending' && (
+                            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-semibold border border-slate-300">
+                              <Lock className="w-3 h-3" /> Queued (Sequential Lock)
+                            </span>
+                          )}
                         </h3>
                         <p className="text-xs text-slate-600 mt-0.5">{task.description}</p>
                       </div>
@@ -932,11 +969,11 @@ export const CompanyDashboard: React.FC = () => {
                       </span>
                     </div>
 
-                    {/* Destination / Target Location Pin */}
-                    <div className="p-2.5 rounded-xl bg-white border border-slate-200 text-xs space-y-1">
+                    {/* Destination / Target Location Pin & Territory Adherence */}
+                    <div className="p-2.5 rounded-xl bg-white border border-slate-200 text-xs space-y-1.5">
                       <div className="flex items-center justify-between text-slate-700 font-semibold">
                         <span className="flex items-center gap-1.5 text-blue-700">
-                          <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                          <MapPin className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                           <span>Client Site: <strong>{task.clientName}</strong></span>
                         </span>
                         <span className="text-[10px] text-slate-400 font-normal">
@@ -944,6 +981,23 @@ export const CompanyDashboard: React.FC = () => {
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-500 pl-5">{task.clientAddress}</p>
+                      
+                      {/* Territory Status Tag */}
+                      <div className="pl-5 pt-1 flex items-center gap-2 flex-wrap text-[10px]">
+                        <span className={`px-2 py-0.5 rounded-md font-semibold ${
+                          task.isInsideAssignedTerritory !== false 
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                            : 'bg-rose-50 text-rose-700 border border-rose-200'
+                        }`}>
+                          {task.isInsideAssignedTerritory !== false 
+                            ? `✅ In Territory (${task.distanceFromTerritoryBaseKm || 1.8} km from Hub)`
+                            : `⚠️ Out of Operating Territory (${task.distanceFromTerritoryBaseKm || 11.8} km)`
+                          }
+                        </span>
+                        {task.territoryName && (
+                          <span className="text-slate-400">Zone: {task.territoryName}</span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Live Proximity & Heading Tracker HUD Card */}
@@ -1644,11 +1698,48 @@ export const CompanyDashboard: React.FC = () => {
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-medium"
                   >
                     {companyEmployees.map(u => (
-                      <option key={u.id} value={u.id}>{u.fullName}</option>
+                      <option key={u.id} value={u.id}>
+                        {u.fullName} ({u.assignedTerritoryName || 'Assigned Zone'})
+                      </option>
                     ))}
                   </select>
                 </div>
               </div>
+
+              {/* Selected Officer Assigned Territory Info Box */}
+              {(() => {
+                const selUser = users.find(u => u.id === newTaskAssignee);
+                const terrEval = evaluateTerritoryRange(
+                  newTaskLat,
+                  newTaskLng,
+                  selUser?.assignedTerritoryBaseLat || 28.6328,
+                  selUser?.assignedTerritoryBaseLng || 77.2235,
+                  selUser?.assignedOperatingRadiusKm || 8.0,
+                  selUser?.assignedTerritoryName || 'Assigned Operational Zone'
+                );
+
+                return (
+                  <div className={`p-2.5 rounded-xl border text-xs space-y-1 ${
+                    terrEval.isInsideTerritory 
+                      ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900' 
+                      : 'bg-rose-50/70 border-rose-200 text-rose-900'
+                  }`}>
+                    <div className="flex items-center justify-between font-bold">
+                      <span className="flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5" />
+                        <span>Officer Zone: {selUser?.assignedTerritoryName || 'Central & South Delhi Zone'}</span>
+                      </span>
+                      <span className="font-mono">{selUser?.assignedOperatingRadiusKm || 8.0} km Max Limit</span>
+                    </div>
+                    <p className="text-[11px]">
+                      {terrEval.isInsideTerritory 
+                        ? `✅ Target is ${terrEval.distanceFromBaseKm} km from territory base hub (Within authorized limit).`
+                        : `⚠️ Range Warning: Target is ${terrEval.distanceFromBaseKm} km away (+${(terrEval.distanceFromBaseKm - terrEval.allowedRadiusKm).toFixed(1)} km outside allowed operating radius).`
+                      }
+                    </p>
+                  </div>
+                );
+              })()}
 
               <div>
                 <div className="flex items-center justify-between mb-1">
@@ -1678,7 +1769,7 @@ export const CompanyDashboard: React.FC = () => {
                       }}
                       className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-medium"
                     >
-                      📍 Connaught Place (Delhi)
+                      📍 Connaught Place (In-Zone: ~1.8km)
                     </button>
                     <button
                       type="button"
@@ -1690,7 +1781,7 @@ export const CompanyDashboard: React.FC = () => {
                       }}
                       className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-medium"
                     >
-                      📍 Cyber City (Gurugram)
+                      📍 Cyber City (Out-of-Zone: ~18km)
                     </button>
                     <button
                       type="button"
@@ -1702,10 +1793,26 @@ export const CompanyDashboard: React.FC = () => {
                       }}
                       className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-medium"
                     >
-                      📍 Sector 18 (Noida)
+                      📍 Sector 18 Noida (~12km)
                     </button>
                   </div>
                 </div>
+              </div>
+
+              {/* On-The-Way / En-Route Waypoint Toggle */}
+              <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl space-y-1">
+                <label className="flex items-center gap-2 cursor-pointer font-bold text-amber-900 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={newTaskIsEnRoute}
+                    onChange={(e) => setNewTaskIsEnRoute(e.target.checked)}
+                    className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-amber-300"
+                  />
+                  <span>⚡ Mark as On-The-Way Lead (En-Route Waypoint Stop)</span>
+                </label>
+                <p className="text-[10px] text-amber-800/80 pl-6">
+                  Check this if the lead is on the employee's current travel route. The employee will be allowed to accept and prioritize this stop without being blocked by sequential task locks.
+                </p>
               </div>
 
               <div>

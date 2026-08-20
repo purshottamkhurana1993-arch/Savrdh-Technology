@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { FieldSureLogo } from '../common/FieldSureLogo';
+import { evaluateTerritoryRange, evaluateEnRouteDetour, formatDistance } from '../../utils/geoTracking';
 import confetti from 'canvas-confetti';
 
 export const EmployeePWA: React.FC = () => {
@@ -51,6 +52,7 @@ export const EmployeePWA: React.FC = () => {
     updateConsent, 
     tasks, 
     updateTaskStatus, 
+    acceptEnRouteWaypointTask,
     completeTaskWithGpsProof,
     fieldVisits, 
     checkInVisit, 
@@ -362,6 +364,23 @@ export const EmployeePWA: React.FC = () => {
                   <span className="font-bold text-emerald-400">{shiftPolicy?.restrictEarlyPunchOut ? 'Enforced' : 'Flexible'}</span>
                 </div>
               </div>
+
+              {/* Employee Assigned Operational Territory Range Card */}
+              <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between bg-blue-950/30 border border-blue-500/20 rounded-xl p-2.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center">
+                    <MapPin className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-blue-300 uppercase font-bold tracking-wider block">Assigned Territory Zone</span>
+                    <span className="text-xs font-bold text-white">{currentUser.assignedTerritoryName || 'Central & South Delhi Operational Zone'}</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-[9px] text-slate-400 block">Max Radius</span>
+                  <span className="text-xs font-bold text-blue-300 font-mono">{currentUser.assignedOperatingRadiusKm || 8.0} km Range</span>
+                </div>
+              </div>
             </div>
 
             {/* Employee Real-Time Performance & Task Rating Widget */}
@@ -649,95 +668,251 @@ export const EmployeePWA: React.FC = () => {
         )}
 
         {/* ===================== TAB 3: TASKS ===================== */}
-        {activeTab === 'tasks' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-bold text-white">Assigned Daily Tasks</h2>
-                <p className="text-xs text-slate-400">Review deliverables and log progress</p>
-              </div>
-            </div>
+        {activeTab === 'tasks' && (() => {
+          const activeTask = myTasks.find(t => t.status === 'in_progress');
+          const empLat = currentDutySession?.lat || 28.5800;
+          const empLng = currentDutySession?.lng || 77.2500;
 
-            <div className="space-y-3">
-              {myTasks.map((task) => (
-                <div key={task.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <span>{task.title}</span>
-                        {task.isGeofenceVerified && (
-                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
-                            GPS Verified
-                          </span>
-                        )}
-                      </h3>
-                      <p className="text-xs text-slate-400 mt-0.5">{task.description}</p>
-                    </div>
-                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase shrink-0 ${
-                      task.priority === 'urgent' ? 'bg-rose-500/20 text-rose-300' :
-                      task.priority === 'high' ? 'bg-amber-500/20 text-amber-300' :
-                      'bg-slate-800 text-slate-300'
-                    }`}>
-                      {task.priority}
+          return (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-bold text-white">Assigned Daily Tasks</h2>
+                  <p className="text-xs text-slate-400">Sequential task execution & en-route waypoint management</p>
+                </div>
+                <span className="text-xs px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 font-semibold font-mono">
+                  {myTasks.filter(t => t.status === 'completed').length}/{myTasks.length} Completed
+                </span>
+              </div>
+
+              {/* Territory Zone Range Policy Banner */}
+              <div className="bg-gradient-to-r from-blue-950/60 to-indigo-950/60 border border-blue-500/30 rounded-2xl p-3.5 space-y-1.5 shadow-xs">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-blue-300 flex items-center gap-1.5">
+                    <MapPin className="w-4 h-4 text-blue-400" />
+                    <span>Assigned Operating Territory:</span>
+                  </span>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                    Max {currentUser.assignedOperatingRadiusKm || 8.0} km Radius
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300">
+                  {currentUser.assignedTerritoryName || 'Central & South Delhi Operational Zone'}. Tasks must remain within your assigned operational range.
+                </p>
+              </div>
+
+              {/* Sequential Execution Policy Active Alert */}
+              {activeTask && (
+                <div className="bg-gradient-to-r from-amber-950/40 to-slate-900 border border-amber-500/30 rounded-2xl p-3.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                      <Radio className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                      <span>Active En-Route Task: <strong>{activeTask.clientName}</strong></span>
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 uppercase">
+                      In Progress
                     </span>
                   </div>
+                  <p className="text-[11px] text-slate-300">
+                    🔒 <strong>Strict Sequential Lock:</strong> Next tasks remain locked until this task is completed with GPS verification, <em>except</em> if admin assigns an on-the-way lead directly along your route.
+                  </p>
+                </div>
+              )}
 
-                  {/* Destination / Client Site Geofence Pin */}
-                  <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs space-y-1">
-                    <div className="flex items-center justify-between text-slate-300 font-semibold">
-                      <span className="flex items-center gap-1.5 text-blue-400">
-                        <MapPin className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                        <span>Client: <strong>{task.clientName}</strong></span>
-                      </span>
-                      <span className="text-[10px] text-emerald-400 font-mono">
-                        Radius: {task.targetGeofenceRadiusMeters || 100}m
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 pl-5 truncate">{task.clientAddress}</p>
-                  </div>
+              <div className="space-y-3">
+                {myTasks.map((task) => {
+                  const isActive = task.id === activeTask?.id;
+                  
+                  // Territory range validation
+                  const territoryEval = (task.targetLat && task.targetLng) ? evaluateTerritoryRange(
+                    task.targetLat,
+                    task.targetLng,
+                    currentUser.assignedTerritoryBaseLat || 28.6328,
+                    currentUser.assignedTerritoryBaseLng || 77.2235,
+                    currentUser.assignedOperatingRadiusKm || 8.0,
+                    currentUser.assignedTerritoryName || 'Central & South Delhi Operational Zone'
+                  ) : null;
 
-                  <div className="text-[11px] text-slate-400 flex items-center justify-between pt-0.5">
-                    <span>Due: <strong className="text-slate-300">{task.dueDate}</strong></span>
-                    <span>Officer: <strong className="text-slate-300">{task.assignedToName}</strong></span>
-                  </div>
+                  // En-route detour calculation if another task is active
+                  const detourEval = (activeTask && !isActive && activeTask.targetLat && activeTask.targetLng && task.targetLat && task.targetLng)
+                    ? evaluateEnRouteDetour(
+                        empLat,
+                        empLng,
+                        activeTask.targetLat,
+                        activeTask.targetLng,
+                        task.targetLat,
+                        task.targetLng
+                      )
+                    : null;
 
-                  {/* Status Toggle & GPS Verification Actions */}
-                  <div className="pt-2 border-t border-slate-800 flex flex-col gap-2">
-                    {task.status !== 'completed' ? (
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => updateTaskStatus(task.id, 'in_progress')}
-                          className={`px-3 py-2 rounded-xl text-xs font-semibold ${task.status === 'in_progress' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300'}`}
-                        >
-                          {task.status === 'in_progress' ? '● En Route' : 'Start Task'}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setShowTaskProofModal(task);
-                            setTaskProofNotes('Physical store audit verified on-site.');
-                          }}
-                          className="flex-1 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center justify-center gap-1.5 shadow-xs"
-                        >
-                          <MapPin className="w-3.5 h-3.5" /> Check-In with GPS Proof ✓
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="w-full p-2.5 bg-emerald-950/40 border border-emerald-500/20 rounded-xl text-[11px] text-emerald-300 flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                          <span>Task Completed • {task.checkInTime || 'Today'}</span>
+                  const isEnRouteWaypoint = Boolean(task.isEnRouteStop || (detourEval && detourEval.isEnRoute));
+                  const isSequentiallyLocked = Boolean(activeTask && !isActive && task.status !== 'completed' && !isEnRouteWaypoint);
+
+                  return (
+                    <div 
+                      key={task.id} 
+                      className={`border rounded-2xl p-4 space-y-3 transition-all ${
+                        isActive 
+                          ? 'bg-slate-900 border-blue-500/60 ring-1 ring-blue-500/30'
+                          : isEnRouteWaypoint && task.status !== 'completed'
+                          ? 'bg-gradient-to-b from-slate-900 to-amber-950/20 border-amber-500/40 ring-1 ring-amber-500/20'
+                          : isSequentiallyLocked
+                          ? 'bg-slate-900/60 border-slate-800 opacity-90'
+                          : 'bg-slate-900 border-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <h3 className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
+                            <span>{task.title}</span>
+                            {task.isGeofenceVerified && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
+                                GPS Verified ✓
+                              </span>
+                            )}
+                            {isEnRouteWaypoint && task.status !== 'completed' && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 flex items-center gap-1 animate-pulse">
+                                ⚡ On-The-Way Lead ({detourEval ? `+${detourEval.formattedDetour} detour` : 'En-Route'})
+                              </span>
+                            )}
+                            {isSequentiallyLocked && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-bold border border-slate-700 flex items-center gap-1">
+                                <Lock className="w-3 h-3 text-slate-400" /> Queued in Sequence
+                              </span>
+                            )}
+                          </h3>
+                          <p className="text-xs text-slate-400 mt-0.5">{task.description}</p>
                         </div>
-                        <span className="font-bold text-emerald-400">
-                          {task.distanceFromTargetMeters?.toFixed(1) || '11.2'}m from Pin ✓
+                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase shrink-0 ${
+                          task.priority === 'urgent' ? 'bg-rose-500/20 text-rose-300' :
+                          task.priority === 'high' ? 'bg-amber-500/20 text-amber-300' :
+                          'bg-slate-800 text-slate-300'
+                        }`}>
+                          {task.priority}
                         </span>
                       </div>
-                    )}
-                  </div>
-                </div>
-              ))}
+
+                      {/* Destination / Client Site Geofence Pin */}
+                      <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs space-y-1">
+                        <div className="flex items-center justify-between text-slate-300 font-semibold">
+                          <span className="flex items-center gap-1.5 text-blue-400">
+                            <MapPin className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                            <span>Client: <strong>{task.clientName}</strong></span>
+                          </span>
+                          <span className="text-[10px] text-emerald-400 font-mono">
+                            Radius: {task.targetGeofenceRadiusMeters || 100}m
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 pl-5 truncate">{task.clientAddress}</p>
+                      </div>
+
+                      {/* Territory Range & En-Route Detour Badges */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[10px]">
+                        {territoryEval && (
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-medium ${
+                            territoryEval.isInsideTerritory 
+                              ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40' 
+                              : 'bg-rose-950/60 text-rose-300 border border-rose-800/40'
+                          }`}>
+                            <MapPin className="w-3 h-3" />
+                            {territoryEval.isInsideTerritory 
+                              ? `In Territory Range (${territoryEval.formattedDistance} from Hub)`
+                              : `⚠️ Out of Territory Range (${territoryEval.formattedDistance})`
+                            }
+                          </span>
+                        )}
+
+                        <span className="text-slate-400">Due: <strong className="text-slate-300">{task.dueDate}</strong></span>
+                      </div>
+
+                      {/* Sequential Lock Guidance Note */}
+                      {isSequentiallyLocked && (
+                        <div className="p-2.5 bg-slate-950/80 border border-slate-800 rounded-xl text-[11px] text-slate-400 flex items-start gap-2">
+                          <Lock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-semibold text-slate-300 block">Task Locked in Queue</span>
+                            <span className="text-[10px] text-slate-400">
+                              {task.lockReason || `Pehle active task '${activeTask?.clientName}' ko finish/check-in karein. Ek task khatam hone ke baad hi dusri task start hogi.`}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* En-Route Waypoint Opportunity Card */}
+                      {isEnRouteWaypoint && task.status !== 'completed' && !isActive && (
+                        <div className="p-2.5 bg-amber-950/30 border border-amber-500/30 rounded-xl text-[11px] text-amber-200 flex items-start gap-2">
+                          <Radio className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 animate-pulse" />
+                          <div className="space-y-1">
+                            <span className="font-bold text-amber-300 block">⚡ On-The-Way Lead (En-Route Waypoint)</span>
+                            <p className="text-[10px] text-amber-200/90">
+                              Yeh lead aapke chal rahe raste ke bilkul paas hai ({detourEval?.savingsDescription || 'On-The-Way'}). Aap isse beech me stop ke roop me accept kar sakte hain.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Status Toggle & GPS Verification Actions */}
+                      <div className="pt-2 border-t border-slate-800 flex flex-col gap-2">
+                        {task.status !== 'completed' ? (
+                          <div className="flex items-center gap-2">
+                            {/* If task is on-the-way lead and not currently active */}
+                            {isEnRouteWaypoint && !isActive ? (
+                              <button
+                                onClick={() => acceptEnRouteWaypointTask(task.id)}
+                                className="w-full py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white transition-all flex items-center justify-center gap-2 shadow-xs"
+                              >
+                                <Radio className="w-4 h-4" /> 🎯 Accept On-The-Way Lead (Prioritize Stop)
+                              </button>
+                            ) : isSequentiallyLocked ? (
+                              <button
+                                onClick={() => {
+                                  showToast(`🔒 Task Locked: Pehle '${activeTask?.clientName}' ko complete karein!`);
+                                }}
+                                className="w-full py-2 rounded-xl text-xs font-semibold bg-slate-800 text-slate-500 flex items-center justify-center gap-1.5 cursor-not-allowed border border-slate-700"
+                              >
+                                <Lock className="w-3.5 h-3.5 text-slate-500" /> Locked in Sequence (Complete Active Task First)
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => updateTaskStatus(task.id, 'in_progress')}
+                                  className={`px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
+                                    isActive ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                  }`}
+                                >
+                                  {isActive ? '● En Route Active' : 'Start Task'}
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setShowTaskProofModal(task);
+                                    setTaskProofNotes('Physical store audit verified on-site.');
+                                  }}
+                                  className="flex-1 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center justify-center gap-1.5 shadow-xs"
+                                >
+                                  <MapPin className="w-3.5 h-3.5" /> Check-In with GPS Proof ✓
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="w-full p-2.5 bg-emerald-950/40 border border-emerald-500/20 rounded-xl text-[11px] text-emerald-300 flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                              <span>Task Completed • {task.checkInTime || 'Today'}</span>
+                            </div>
+                            <span className="font-bold text-emerald-400">
+                              {task.distanceFromTargetMeters?.toFixed(1) || '11.2'}m from Pin ✓
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ===================== TAB 4: EXPENSES ===================== */}
         {activeTab === 'expenses' && (

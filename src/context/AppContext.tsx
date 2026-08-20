@@ -85,6 +85,7 @@ interface AppContextType {
   tasks: FieldTask[];
   updateTaskStatus: (taskId: string, status: FieldTask['status'], notes?: string) => void;
   startTaskTrip: (taskId: string) => void;
+  acceptEnRouteWaypointTask: (taskId: string) => void;
   updateTaskEnRouteTelemetry: (taskId: string, currentLat: number, currentLng: number, speedKmH: number) => void;
   completeTaskWithGpsProof: (taskId: string, proofData: {
     checkInLat: number;
@@ -666,17 +667,89 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateTaskStatus = (taskId: string, status: FieldTask['status'], notes?: string) => {
-    setTasks(prev => prev.map(t => t.id === taskId ? {
-      ...t,
-      status,
-      completedAt: status === 'completed' ? new Date().toISOString() : t.completedAt,
-      completionNotes: notes || t.completionNotes
-    } : t));
+    const targetTask = tasks.find(t => t.id === taskId);
+    if (!targetTask) return;
+
+    // Sequential Locking Enforcement:
+    if (status === 'in_progress') {
+      const activeRunningTask = tasks.find(
+        t => t.assignedToUserId === targetTask.assignedToUserId && t.id !== taskId && t.status === 'in_progress'
+      );
+      if (activeRunningTask && !targetTask.isEnRouteStop) {
+        showToast(`🔒 Task Locked: Pehle active task '${activeRunningTask.clientName}' ko finish/check-in karein!`);
+        return;
+      }
+    }
+
+    setTasks(prev => prev.map(t => {
+      if (t.id === taskId) {
+        return {
+          ...t,
+          status,
+          completedAt: status === 'completed' ? new Date().toISOString() : t.completedAt,
+          completionNotes: notes || t.completionNotes,
+          isLocked: false
+        };
+      }
+      // If completing this task, unlock the next sequential task for this employee
+      if (status === 'completed' && t.assignedToUserId === targetTask.assignedToUserId && t.isLocked) {
+        return {
+          ...t,
+          isLocked: false,
+          lockReason: undefined
+        };
+      }
+      return t;
+    }));
     addAuditLog('UPDATE_TASK_STATUS', 'FieldTask', taskId, `Status changed to ${status}`);
     showToast(`Task status updated to: ${status.replace('_', ' ').toUpperCase()}`);
   };
 
+  const acceptEnRouteWaypointTask = (taskId: string) => {
+    const taskToAccept = tasks.find(t => t.id === taskId);
+    if (!taskToAccept) return;
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    setTasks(prev => prev.map(t => {
+      if (t.id === taskId) {
+        return {
+          ...t,
+          status: 'in_progress',
+          tripStartedAt: timeStr,
+          isEnRouteStop: true,
+          isLocked: false,
+          lastHeadingStatus: 'approaching'
+        };
+      }
+      // If there was an already running in_progress task, set it to pending and queue it next
+      if (t.assignedToUserId === taskToAccept.assignedToUserId && t.status === 'in_progress' && t.id !== taskId) {
+        return {
+          ...t,
+          status: 'pending',
+          isLocked: true,
+          lockReason: `Paused for On-The-Way Lead '${taskToAccept.clientName}'. Resumes after check-in.`
+        };
+      }
+      return t;
+    }));
+
+    addAuditLog('ACCEPT_ENROUTE_WAYPOINT', 'FieldTask', taskId, `Accepted on-the-way stop: ${taskToAccept.clientName}`);
+    showToast(`⚡ On-the-way Lead Accepted! Navigation focused on ${taskToAccept.clientName}.`);
+  };
+
   const startTaskTrip = (taskId: string) => {
+    const targetTask = tasks.find(t => t.id === taskId);
+    if (!targetTask) return;
+
+    // Check sequential locking:
+    const activeRunningTask = tasks.find(
+      t => t.assignedToUserId === targetTask.assignedToUserId && t.id !== taskId && t.status === 'in_progress'
+    );
+    if (activeRunningTask && !targetTask.isEnRouteStop) {
+      showToast(`🔒 Action Blocked: Pehle '${activeRunningTask.clientName}' task complete karein!`);
+      return;
+    }
+
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     setTasks(prev => prev.map(t => {
       if (t.id === taskId) {
@@ -684,7 +757,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...t,
           status: 'in_progress',
           tripStartedAt: timeStr,
-          lastHeadingStatus: 'approaching'
+          lastHeadingStatus: 'approaching',
+          isLocked: false
         };
       }
       return t;
@@ -1505,6 +1579,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         tasks,
         updateTaskStatus,
         startTaskTrip,
+        acceptEnRouteWaypointTask,
         updateTaskEnRouteTelemetry,
         completeTaskWithGpsProof,
         addTask,

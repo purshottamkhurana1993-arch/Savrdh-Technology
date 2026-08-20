@@ -175,3 +175,160 @@ export function evaluateEnRouteTelemetry(
     proximityProgressPercentage: isInsideGeofence ? 100 : proximityProgressPercentage
   };
 }
+
+export interface EnRouteDetourResult {
+  isEnRoute: boolean;
+  directDistanceMeters: number;
+  viaWaypointDistanceMeters: number;
+  detourMeters: number;
+  formattedDetour: string;
+  crossTrackDistanceMeters: number;
+  detourEtaMinutes: number;
+  savingsDescription: string;
+  recommendation: 'optimal_waypoint' | 'moderate_detour' | 'out_of_way';
+}
+
+/**
+ * Calculates Cross-Track Distance (meters) from a waypoint to the straight-line corridor
+ */
+export function calculateCrossTrackDistanceMeters(
+  startLat: number,
+  startLng: number,
+  endLat: number,
+  endLng: number,
+  pointLat: number,
+  pointLng: number
+): number {
+  const R = 6371e3;
+  const d13 = calculateDistanceMeters(startLat, startLng, pointLat, pointLng) / R;
+  const θ13 = (calculateBearing(startLat, startLng, pointLat, pointLng) * Math.PI) / 180;
+  const θ12 = (calculateBearing(startLat, startLng, endLat, endLng) * Math.PI) / 180;
+
+  const dxt = Math.asin(Math.sin(d13) * Math.sin(θ13 - θ12)) * R;
+  return Math.abs(dxt);
+}
+
+/**
+ * Evaluates whether a candidate lead/task is on-the-way along an employee's active journey
+ */
+export function evaluateEnRouteDetour(
+  currentLat: number,
+  currentLng: number,
+  activeDestLat: number,
+  activeDestLng: number,
+  candidateLat: number,
+  candidateLng: number
+): EnRouteDetourResult {
+  const directDistanceMeters = calculateDistanceMeters(
+    currentLat,
+    currentLng,
+    activeDestLat,
+    activeDestLng
+  );
+
+  const distToCandidate = calculateDistanceMeters(
+    currentLat,
+    currentLng,
+    candidateLat,
+    candidateLng
+  );
+
+  const distCandidateToDest = calculateDistanceMeters(
+    candidateLat,
+    candidateLng,
+    activeDestLat,
+    activeDestLng
+  );
+
+  const viaWaypointDistanceMeters = distToCandidate + distCandidateToDest;
+  const detourMeters = Math.max(0, viaWaypointDistanceMeters - directDistanceMeters);
+  const crossTrackDistanceMeters = calculateCrossTrackDistanceMeters(
+    currentLat,
+    currentLng,
+    activeDestLat,
+    activeDestLng,
+    candidateLat,
+    candidateLng
+  );
+
+  // Consider "En-Route" if extra detour <= 1500m OR cross-track <= 900m and within bounded path
+  const isEnRoute = detourMeters <= 1500 || (crossTrackDistanceMeters <= 900 && distToCandidate <= directDistanceMeters * 1.2);
+  const detourEtaMinutes = Math.max(1, Math.round(detourMeters / ((22 * 1000) / 3600) / 60));
+
+  let recommendation: 'optimal_waypoint' | 'moderate_detour' | 'out_of_way' = 'out_of_way';
+  let savingsDescription = 'Significant detour required';
+
+  if (detourMeters <= 500) {
+    recommendation = 'optimal_waypoint';
+    savingsDescription = `Directly on-the-way corridor (+${formatDistance(detourMeters)} detour • +${detourEtaMinutes}m)`;
+  } else if (isEnRoute) {
+    recommendation = 'moderate_detour';
+    savingsDescription = `Manageable near-route stop (+${formatDistance(detourMeters)} detour)`;
+  }
+
+  return {
+    isEnRoute,
+    directDistanceMeters,
+    viaWaypointDistanceMeters,
+    detourMeters,
+    formattedDetour: formatDistance(detourMeters),
+    crossTrackDistanceMeters,
+    detourEtaMinutes,
+    savingsDescription,
+    recommendation
+  };
+}
+
+export interface TerritoryRangeResult {
+  isInsideTerritory: boolean;
+  distanceFromBaseKm: number;
+  formattedDistance: string;
+  allowedRadiusKm: number;
+  territoryName: string;
+  statusBadgeText: string;
+  statusColor: string;
+  warningMessage?: string;
+}
+
+/**
+ * Validates if a target location is within the employee's assigned territory boundary
+ */
+export function evaluateTerritoryRange(
+  targetLat: number,
+  targetLng: number,
+  territoryBaseLat?: number,
+  territoryBaseLng?: number,
+  allowedRadiusKm: number = 8.0,
+  territoryName: string = 'Assigned Operational Zone'
+): TerritoryRangeResult {
+  // Default to Connaught Place base if base is unspecified
+  const baseLat = territoryBaseLat || 28.6328;
+  const baseLng = territoryBaseLng || 77.2235;
+
+  const distanceMeters = calculateDistanceMeters(baseLat, baseLng, targetLat, targetLng);
+  const distanceFromBaseKm = Number((distanceMeters / 1000).toFixed(1));
+  const isInsideTerritory = distanceFromBaseKm <= allowedRadiusKm;
+
+  let statusBadgeText = `Inside Territory (${distanceFromBaseKm} km / ${allowedRadiusKm} km)`;
+  let statusColor = '#10b981'; // emerald
+  let warningMessage: string | undefined = undefined;
+
+  if (!isInsideTerritory) {
+    const excessKm = (distanceFromBaseKm - allowedRadiusKm).toFixed(1);
+    statusBadgeText = `Out of Range (+${excessKm} km beyond ${allowedRadiusKm} km limit)`;
+    statusColor = '#ef4444'; // red
+    warningMessage = `This task is located ${distanceFromBaseKm} km away, exceeding the officer's ${allowedRadiusKm} km operating limit for ${territoryName}.`;
+  }
+
+  return {
+    isInsideTerritory,
+    distanceFromBaseKm,
+    formattedDistance: `${distanceFromBaseKm} km`,
+    allowedRadiusKm,
+    territoryName,
+    statusBadgeText,
+    statusColor,
+    warningMessage
+  };
+}
+
